@@ -82,3 +82,11 @@ Developed as part of Wikipedia gender equity work. Intended for use by Wikipedia
 [MIT](LICENSE) — free to use, adapt, and redistribute.
 
 Wikipedia article content fetched by this tool is © Wikipedia contributors, licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+
+---
+
+## Licence
+
+This project is released into the public domain under the [CC0 1.0 Universal (CC0 1.0) Public Domain Dedication](https://creativecommons.org/publicdomain/zero/1.0/).
+
+You can copy, modify, distribute and perform the work, even for commercial purposes, all without asking permission.
