@@ -77,11 +77,29 @@ Developed as part of Wikipedia gender equity work. Intended for use by Wikipedia
 
 ---
 
+
+## Translating this tool
+
+A full translation guide is available for anyone wishing to adapt the tool to another language. It covers all 49 patterns with explanations and before/after examples, notes on adapting the regular expressions, and instructions for switching the Wikipedia API to a different language edition.
+
+📄 [Download the translation guide (Word document)](https://github.com/nethahussain/wikipedia-gender-bias-detector/blob/main/translation-guide.docx)
+
+---
+
 ## Licence
 
 [MIT](LICENSE) — free to use, adapt, and redistribute.
 
 Wikipedia article content fetched by this tool is © Wikipedia contributors, licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+
+---
+
+
+## Translating this tool
+
+A full translation guide is available for anyone wishing to adapt the tool to another language. It covers all 49 patterns with explanations and before/after examples, notes on adapting the regular expressions, and instructions for switching the Wikipedia API to a different language edition.
+
+📄 [Download the translation guide (Word document)](https://github.com/nethahussain/wikipedia-gender-bias-detector/blob/main/translation-guide.docx)
 
 ---
 
