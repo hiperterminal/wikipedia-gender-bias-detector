@@ -11,13 +11,6 @@ A fully client-side tool that analyses Wikipedia biographies of women for system
 ---
 
 
-## Available languages
-
-| Language | Link |
-|---|---|
-| 🇬🇧 English | [Live tool](https://nethahussain.github.io/wikipedia-gender-bias-detector/) |
-| 🇪🇸 Spanish / Español | [Herramienta en español](https://nethahussain.github.io/wikipedia-gender-bias-detector/es.html) |
-
 ## What it detects
 
 The tool checks against **49 bias patterns** across 6 categories:
