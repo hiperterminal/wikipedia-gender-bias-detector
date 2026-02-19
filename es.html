@@ -566,7 +566,7 @@ async function searchWiki(query) {
 
 async function fetchWiki(input) {
   const clean = input.trim().replace(/^https?:\/\/[a-z.]*wikipedia\.org\/wiki\//i, '');
-  const url   = `https://es.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(clean)}&prop=extracts|categories&explaintext=true&cllimit=50&format=json&origin=*`;
+  const url   = `https://es.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(clean)}&prop=extracts|categories&exintro=0&explaintext=1&cllimit=50&format=json&origin=*`;
   const res   = await fetch(url);
   if (!res.ok) throw new Error(`La API de Wikipedia devolvió el código ${res.status}.`);
   const data  = await res.json();
@@ -844,11 +844,15 @@ function App() {
 
     h('div', { style:{ background:'#F2EDE7', padding:'20px 26px', borderBottom:'1px solid #e0d8cf' }, className:'no-print' },
       h('div', { style:{ maxWidth:860, margin:'0 auto' } },
-        h('div', { style:{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:12 } },
+        h('div', { style:{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:12, alignItems:'center' } },
           h(SearchDropdown, { value:query, onChange:setQuery, onSelect, onSubmit:()=>run() }),
           h('button', { onClick:()=>run(), disabled:busy||!query.trim(),
             style:{ padding:'13px 22px', background:'#E3120B', color:'#fff', border:'none', fontSize:13, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', fontWeight:700, whiteSpace:'nowrap' } },
             busy ? 'Analizando…' : 'Analizar')
+        ),
+        h('div', { style:{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginBottom:8 } },
+          h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.1em', textTransform:'uppercase', padding:'3px 9px', background:'#fff', border:'1px solid #b8dfc9', color:'#1a7a4a', fontWeight:700 } },
+            '🌐 es.wikipedia.org'),
         ),
         h('div', { style:{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' } },
           h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#aaa', letterSpacing:'0.1em', textTransform:'uppercase' } }, 'Ejemplos:'),
