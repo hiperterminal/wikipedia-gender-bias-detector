@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Detector de Biaix de Gènere — Biografies de Dones a la Viquipèdia</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,800;1,400;1,700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Source Serif 4', Georgia, serif; background: #FAF8F5; color: #0A0A0A; -webkit-font-smoothing: antialiased; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes spin   { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+    input:focus { outline:none; border-color:#E3120B !important; box-shadow:0 0 0 3px rgba(227,18,11,0.1); }
+    a:hover { opacity:.8; }
+    button:hover:not(:disabled) { opacity:.88; }
+    button:disabled { cursor:not-allowed; }
+    .report-anim { animation: fadeUp .4s ease both; }
+    .inst-row { transition: background .12s; }
+    .inst-row:hover { background: #fafafa; }
+    kbd { padding:1px 5px; background:#f0f0f0; border:1px solid #ccc; border-radius:3px; font-size:11px; font-family:'IBM Plex Mono',monospace; }
+
+    /* ── Desplegable ── */
+    .dropdown-wrap { position:relative; flex:1; min-width:220px; }
+    .dropdown-list  {
+      position:absolute; top:calc(100% + 3px); left:0; right:0; z-index:100;
+      background:#fff; border:1.5px solid #E3120B; border-radius:3px;
+      max-height:260px; overflow-y:auto;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+    }
+    .dropdown-item {
+      padding:10px 14px; cursor:pointer; font-size:14px;
+      font-family:'Source Serif 4',serif; color:#0A0A0A; border-bottom:1px solid #f0ebe4;
+      display:flex; align-items:center; gap:8px;
+    }
+    .dropdown-item:last-child { border-bottom:none; }
+    .dropdown-item:hover, .dropdown-item.active { background:#fdf5f5; color:#E3120B; }
+    .dropdown-item .thumb { width:32px; height:32px; object-fit:cover; border-radius:2px; flex-shrink:0; background:#ece7e0; }
+    .dropdown-item .thumb-placeholder { width:32px; height:32px; background:#ece7e0; border-radius:2px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px; color:#aaa; }
+    .dropdown-searching { padding:10px 14px; font-family:'IBM Plex Mono',monospace; fontSize:10px; color:#aaa; font-size:11px; }
+
+    /* ── Peu de pàgina ── */
+    .tool-footer { background:#0A0A0A; color:#888; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:18px 26px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; letter-spacing:0.05em; }
+    .tool-footer a { color:#E3120B; text-decoration:none; }
+    .tool-footer a:hover { text-decoration:underline; }
+    @media (max-width:680px) { .grid2 { grid-template-columns:1fr !important; } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+'use strict';
+const h = React.createElement;
+const { useState, useCallback, useRef, useEffect } = React;
+
+/* ════════════════════════════════════════════════════
+   BIBLIOTECA DE PATRONS DE BIAIX
+════════════════════════════════════════════════════ */
+const CAT_META = {
+  relational: { label:'Definició Relacional',       color:'#c0313f', bg:'#fde8ec', icon:'👥' },
+  appearance: { label:'Focus en l\'Aparença',        color:'#b85a0a', bg:'#fdf0e6', icon:'👁'  },
+  diminutive: { label:'Llenguatge Diminutiu',        color:'#6b30cc', bg:'#f3effd', icon:'↓'  },
+  gendered:   { label:'Gènere Innecessari',          color:'#0c6e63', bg:'#e5f5f3', icon:'⚧'  },
+  omission:   { label:'Minimització de Mèrits',      color:'#1850a0', bg:'#e8f0fc', icon:'📊' },
+  tone:       { label:'To Condescendent',            color:'#8a2e2e', bg:'#faeaea', icon:'💬' },
+};
+
+const PATTERNS = [
+  // RELACIONAL
+  { cat:'relational', weight:2.2, src:'\\b(?:wife|spouse)\\s+of\\b',
+    explain:'Definir el subjecte com l\'esposa d\'algú col·loca la seva identitat en relació a un home en lloc de per dret propi — un enquadrament que rarament s\'aplica a homes de mèrits equivalents.',
+    suggest:'Obriu amb el títol professional o la contribució més important del subjecte. El matrimoni pot aparèixer més endavant com a context biogràfic, no com la seva identitat principal.',
+    rewrites:[
+      { from:'She was the wife of the composer [Name] and accompanied him on tour.', to:'A mezzo-soprano, she toured internationally; she was also married to the composer [Name].' },
+      { from:'As the wife of the prime minister, she became a public figure.', to:'She became a public figure in her own right as a diplomat and later as an author.' },
+      { from:'Born in Vienna, she was the wife of industrialist [Name].', to:'Born in Vienna, she was a textile chemist who later married industrialist [Name].' },
+    ] },
+  { cat:'relational', weight:1.7, src:'\\bdaughter\\s+of\\b',
+    explain:'Presentar el subjecte a través de la seva filiació familiar privilegia el llinatge familiar per sobre dels seus propis assoliments.',
+    suggest:'Encapçaleu amb el propi rol o assoliment del subjecte. La filiació pertany a una secció de «Primers anys de vida», no a l\'enquadrament inicial.',
+    rewrites:[
+      { from:'The daughter of a diplomat, she later became a renowned architect.', to:'A renowned architect, she grew up in a diplomatic household.' },
+      { from:'Daughter of the painter [Name], she trained at the École des Beaux-Arts.', to:'She trained at the École des Beaux-Arts and later surpassed the reputation of her father, [Name].' },
+      { from:'The daughter of a mill worker, she rose to lead the labour movement.', to:'She rose to lead the labour movement, having grown up in a working mill family.' },
+    ] },
+  { cat:'relational', weight:2.0, src:'\\bwidow(?:ed)?\\s+(?:of|after)\\b',
+    explain:'Definir el subjecte a través del dol ancora la seva identitat a una parella morta en lloc de la seva pròpia obra vital.',
+    suggest:'Elimineu o reubiqueu aquesta referència. Si és rellevant, esmenteu la mort de la seva parella únicament en context cronològic.' },
+  { cat:'relational', weight:1.9, src:'\\bher\\s+(?:husband|boyfriend|partner|father|brother)\\s+(?:was|is|had|helped|encouraged|supported|introduced|inspired)\\b',
+    explain:'Atribuir mèrit a una figura masculina com a facilitadora de la carrera del subjecte implica que ella necessitava suport masculí per assolir-ho — un biaix estructural que rarament s\'aplica als homes.',
+    suggest:'Reencadreu perquè el subjecte sigui l\'agent de la seva pròpia carrera. Si va existir col·laboració, descriviu-la com una associació.',
+    rewrites:[
+      { from:'Her husband encouraged her to pursue painting.', to:'She took up painting in her late twenties, developing a distinctive style.' },
+      { from:'Her father introduced her to mathematics at an early age.', to:'She showed an early aptitude for mathematics, later studying under [Name] at Cambridge.' },
+      { from:'Her brother helped her gain access to the laboratory.', to:'She secured laboratory access through the university\'s visiting researcher programme.' },
+    ] },
+  { cat:'relational', weight:1.5, src:'\\bmother\\s+of\\s+(?:(?:two|three|four|five|six|seven|eight|\\d+)\\s+)?children\\b',
+    explain:'Presentar la maternitat abans de la identitat professional reflecteix un doble estàndard persistent en l\'escriptura biogràfica.',
+    suggest:'Traslladeu els detalls familiars a una secció de «Vida Personal». Establiu primer la identitat professional.' },
+  // APARENÇA
+  { cat:'appearance', weight:2.0, src:'\\b(?:beautiful|beauty|attractive|pretty|gorgeous|stunning|lovely|glamorous|alluring|ravishing)\\b',
+    explain:'Els comentaris sobre l\'atractiu físic rarament es troben en biografies d\'homes d\'assoliments comparables i impliquen que l\'aparença és una característica definitòria.',
+    suggest:'Elimineu el descriptor físic. Si alguna qualitat de presència és rellevant, descriviu-la en termes de comportament professional en lloc d\'atractiu.',
+    rewrites:[
+      { from:'The beautiful scientist captivated audiences with her lecture.', to:'The scientist captivated audiences with her lecture.' },
+      { from:'Attractive and brilliant, she rose quickly through the ranks.', to:'She rose quickly through the ranks.' },
+      { from:'Her gorgeous looks made her a natural fit for the public-facing role.', to:'Her communication skills made her a natural fit for the public-facing role.' },
+    ] },
+  { cat:'appearance', weight:2.1, src:'\\b(?:slim|slender|petite|curvaceous|voluptuous|statuesque)\\s+(?:figure|frame|build|physique|body)\\b',
+    explain:'Descriure la forma del cos d\'una dona en una biografia enciclopèdica és gairebé sempre irrellevant i la redueix a la seva forma física.',
+    suggest:'Elimineu completament. Les dimensions físiques no són rellevants enciclopèdicament per a una biografia professional.',
+    rewrites:[
+      { from:'Her slender figure made her instantly recognisable on stage.', to:'[Elimineu completament — no és rellevant enciclopèdicament.]' },
+      { from:'With her statuesque build she commanded attention at public events.', to:'She commanded attention at public events.' },
+      { from:'Her petite frame belied the authority with which she spoke.', to:'She spoke with considerable authority.' },
+    ] },
+  { cat:'appearance', weight:2.2, src:'\\bknown\\s+(?:as\\s+much\\s+)?for\\s+her\\s+(?:beauty|looks?|appearance|figure|face|elegance|poise)\\b',
+    explain:'Emmarcar els atributs físics com la raó principal de la renom del subjecte margina els seus assoliments reals.',
+    suggest:'Substituïu-ho per allò pel qual el subjecte és conegut professionalment.',
+    rewrites:[
+      { from:'She was known as much for her beauty as for her research.', to:'She was known for her research into plasma physics.' },
+      { from:'She became famous for her elegance as much as her diplomacy.', to:'She became famous for her diplomatic skill and her negotiation of the 1962 agreement.' },
+      { from:'Audiences knew her as much for her looks as for her voice.', to:'Audiences celebrated her powerful soprano voice and her interpretations of Verdi.' },
+    ] },
+  { cat:'appearance', weight:1.4, src:'\\bwell[-\\s](?:dressed|groomed|turned\\s+out)\\b',
+    explain:'Les referències a la vestimenta i l\'aparença en contextos biogràfics professionals s\'apliquen de manera desproporcionada a les dones.',
+    suggest:'Elimineu la referència. Si la presentació és rellevant per al seu treball, expliqueu explícitament aquesta connexió.',
+    rewrites:[
+      { from:'The well-dressed economist addressed the conference.', to:'The economist addressed the conference.' },
+      { from:'Always well-groomed, she projected authority in every public appearance.', to:'She projected authority in every public appearance.' },
+      { from:'Her well-turned-out appearance was frequently noted by journalists.', to:'[Elimineu — no és rellevant enciclopèdicament.]' },
+    ] },
+  // DIMINUTIU
+  { cat:'diminutive', weight:2.5, src:'\\bjust\\s+(?:a\\s+)?(?:girl|woman|housewife|mother|nurse|secretary)\\b',
+    explain:'"Just" minimitza la identitat o posició del subjecte, implicant que és insuficient o poc remarcable.',
+    suggest:'Elimineu completament "just". Descriviu el rol o posició sense qualificació.',
+    rewrites:[
+      { from:'She was just a secretary when she invented the process.', to:'She was working as a secretary when she developed the process.' },
+      { from:'She was just a housewife when her novel was accepted for publication.', to:'She completed her first novel while raising her children at home.' },
+      { from:'She was just a girl from Mississippi who changed American music.', to:'She was a musician from Mississippi who transformed American popular music.' },
+    ] },
+  { cat:'diminutive', weight:2.3, src:'\\bmerely\\s+(?:a\\s+)?(?:girl|woman|secretary|assistant|nurse|teacher|clerk)\\b',
+    explain:'"Merely" implica implícitament que la posició del subjecte és baixa o sense importància.',
+    suggest:'Elimineu "merely". Descriviu el punt de partida de manera neutral.',
+    rewrites:[
+      { from:'She was merely a nurse before her research changed medicine.', to:'She began her career as a nurse; her subsequent research transformed the field.' },
+      { from:'She was merely a teacher when she wrote the paper.', to:'She was teaching secondary school when she wrote the paper that attracted international attention.' },
+      { from:'She was merely a clerk when she uncovered the discrepancy.', to:'She was working as a clerk when she identified the discrepancy that led to the investigation.' },
+    ] },
+  { cat:'diminutive', weight:2.5, src:'\\bdespite\\s+(?:being\\s+)?(?:a\\s+)?(?:woman|female|mother|wife)\\b',
+    explain:'"Despite being a woman" emmarca la condició de ser dona com un obstacle per a l\'assoliment.',
+    suggest:'Elimineu aquesta construcció. Si va existir discriminació estructural, nomeneu-la específicament.',
+    rewrites:[
+      { from:'Despite being a woman, she led the expedition to the Arctic.', to:'Despite being excluded from the official programme, she led the expedition to the Arctic.' },
+      { from:'Despite being a mother of three, she completed her doctorate.', to:'She completed her doctorate in 1961.' },
+      { from:'Despite being a woman in a male-dominated field, she prevailed.', to:'Despite institutional barriers that excluded women from the faculty, she was appointed professor in 1954.' },
+    ] },
+  { cat:'diminutive', weight:2.0, src:'\\bsurprisingly\\s+(?:managed|achieved|succeeded|became|won|published|completed|earned)\\b',
+    explain:'"Surprisingly" codifica una suposició de gènere sobre qui s\'espera que tingui èxit.',
+    suggest:'Elimineu "surprisingly". Enuncieu l\'assoliment directament.',
+    rewrites:[
+      { from:'She surprisingly managed to win the prize.', to:'She won the prize.' },
+      { from:'She surprisingly achieved a perfect score.', to:'She achieved a perfect score.' },
+      { from:'She surprisingly became the director at thirty-two.', to:'She became director at thirty-two.' },
+    ] },
+  { cat:'diminutive', weight:1.5, src:'\\bmanaged\\s+to\\s+(?:complete|finish|earn|win|achieve|become|publish|write|lead)\\b',
+    explain:'"Managed to" implica l\'assoliment davant d\'obstacles, s\'aplica més freqüentment a les dones.',
+    suggest:'Substituïu-ho per un verb actiu directe.',
+    rewrites:[
+      { from:'She managed to publish three papers that year.', to:'She published three papers that year.' },
+      { from:'She managed to complete her degree while working full time.', to:'She completed her degree while working full time.' },
+      { from:'She managed to lead the team through the crisis.', to:'She led the team through the crisis.' },
+    ] },
+  { cat:'diminutive', weight:1.8, src:'\\b(?:young\\s+)?girl\\b',
+    skipCtx:'\\b(?:gave\\s+birth\\s+to\\s+a|had\\s+a\\s+(?:baby\\s+)?|baby\\s+|their\\s+(?:baby\\s+)?|welcomed\\s+a\\s+|delivered\\s+a\\s+|born\\s+a\\s+|raising\\s+a\\s+|a\\s+little\\s+|little\\s+)girl\\b',
+    explain:'Usar "girl" per descriure una dona adulta la infantilitza.',
+    suggest:'Substituïu "girl" per "woman". Si ella és literalment una nena en aquest punt, especifiqueu l\'edat.',
+    rewrites:[
+      { from:'The girl from rural Kenya would go on to win the Nobel Prize.', to:'The woman from rural Kenya would go on to win the Nobel Prize.' },
+      { from:'A quiet girl from Lahore who shook the world.', to:'A woman from Lahore whose activism changed international education policy.' },
+      { from:'The young girl showed an aptitude for mathematics.', to:'From an early age she showed a strong aptitude for mathematics.' },
+    ] },
+  // GÈNERE
+  { cat:'gendered', weight:1.9, src:'\\b(?:female|woman|lady)\\s+(?:doctor|physician|scientist|engineer|pilot|astronaut|lawyer|attorney|politician|senator|president|professor|executive|CEO|director|architect|mathematician|physicist|chemist|composer|conductor|general|admiral|soldier|officer|judge|surgeon)\\b',
+    explain:'Afegir un qualificador de gènere a un títol professional implica que la professió és masculina per defecte.',
+    suggest:'Elimineu el qualificador de gènere. Useu el títol professional sol.',
+    rewrites:[
+      { from:'She became the first female engineer at the firm.', to:'She became the first engineer from her region at the firm.' },
+      { from:'As a female surgeon, she faced resistance from her colleagues.', to:'As a surgeon, she faced institutional resistance that excluded women from senior positions.' },
+      { from:'She was one of very few female physicists of her generation.', to:'She was one of very few physicists of her generation to have published in both quantum mechanics and thermodynamics.' },
+    ] },
+  { cat:'gendered', weight:1.7, src:'\\b(?:female|woman|lady)\\s+(?:writer|author|poet|painter|artist|sculptor|photographer|filmmaker|director|producer|musician|composer|performer)\\b',
+    explain:'Posar gènere a les professions creatives implica que la identitat artística és masculina per defecte.',
+    suggest:'Useu el títol professional sol.',
+    rewrites:[
+      { from:'She was a celebrated female novelist.', to:'She was a celebrated novelist.' },
+      { from:'As a female filmmaker, she struggled for funding.', to:'She struggled for funding throughout her career, facing systemic barriers in the industry.' },
+      { from:'The female poet was shortlisted for the Booker Prize.', to:'The poet was shortlisted for the Booker Prize.' },
+    ] },
+  { cat:'gendered', weight:2.2, src:'\\bfor\\s+a\\s+woman\\b',
+    explain:'"For a woman" mesura el subjecte respecte a un estàndard de gènere, implicant que el seu assoliment és qualificat en lloc d\'absolut.',
+    suggest:'Elimineu completament "for a woman". Descriviu l\'assoliment en termes absoluts.',
+    rewrites:[
+      { from:'Her mathematical output was extraordinary for a woman.', to:'Her mathematical output was extraordinary.' },
+      { from:'She ran exceptionally fast times, remarkable for a woman of her era.', to:'She ran exceptionally fast times, setting records that stood for two decades.' },
+      { from:'Her prose style was considered unusually direct for a woman.', to:'Her prose style was considered unusually direct for the period.' },
+    ] },
+  { cat:'gendered', weight:1.4, src:'\\bfirst\\s+(?:woman|female)\\s+to\\s+(?:win|receive|earn|hold|become|lead|serve|be\\s+elected|be\\s+appointed|be\\s+awarded)\\b',
+    explain:'"First woman to" usat descuradament implica que les dones estan inherentment menys esperades en un rol.',
+    suggest:'Si és genuïnament significatiu, contextualitzeu-ho: expliqueu quines barreres estructurals prèviament excloïen les dones.' },
+  // OMISSIÓ
+  { cat:'omission', weight:1.4, src:'\\bwas\\s+(?:awarded|given|presented\\s+with|honoured\\s+with|granted\\s+the)\\b',
+    explain:'La veu passiva elimina l\'agència del subjecte. "Was awarded" la converteix en una receptora passiva en lloc de la guanyadora activa.',
+    suggest:'Reescriviu en veu activa.',
+    rewrites:[
+      { from:'She was awarded the Nobel Prize in 1963.', to:'She won the Nobel Prize in 1963.' },
+      { from:'She was given the Pulitzer Prize for her debut novel.', to:'Her debut novel received the Pulitzer Prize.' },
+      { from:'She was presented with the gold medal by the Academy.', to:'The Academy awarded her its gold medal.' },
+    ] },
+  { cat:'omission', weight:1.9, src:'\\bwhile\\s+(?:also\\s+)?(?:raising|caring\\s+for|looking\\s+after)\\s+(?:her\\s+)?(?:children|family|kids|son|daughter)\\b',
+    explain:'Afegir responsabilitats domèstiques als assoliments professionals implica que estan en tensió.',
+    suggest:'Si els detalls familiars són rellevants, doneu-los la seva pròpia oració en una secció de «Vida Personal».',
+    rewrites:[
+      { from:'She wrote four novels while also raising three children.', to:'She wrote four novels during the 1960s.' },
+      { from:'She led the department while also caring for her elderly parents.', to:'She led the department throughout the 1980s.' },
+      { from:'She completed her doctorate while raising two sons.', to:'She completed her doctorate in 1974.' },
+    ] },
+  { cat:'omission', weight:2.0, src:'\\bbalancing\\s+(?:her\\s+)?(?:career|work|professional\\s+life)\\s+(?:with|and)\\s+(?:her\\s+)?(?:family|children|motherhood|domestic)\\b',
+    explain:'"Balancing career and family" s\'aplica gairebé exclusivament a les dones en la biografia.',
+    suggest:'Elimineu l\'enquadrament d\'equilibri. Descriviu la vida professional i personal per separat.',
+    rewrites:[
+      { from:'Balancing her career with motherhood, she published extensively.', to:'She published extensively throughout the 1970s.' },
+      { from:'She managed to balance her work with her family commitments.', to:'She maintained a prolific research output throughout her career.' },
+      { from:'Balancing her professional life and domestic responsibilities, she still found time to compose.', to:'She composed prolifically, completing six symphonies between 1955 and 1970.' },
+    ] },
+  { cat:'omission', weight:1.7, src:'\\bafter\\s+(?:her\\s+)?(?:marriage|wedding|children\\s+(?:left|grew|were\\s+grown)|raising\\s+her\\s+children)\\b',
+    explain:'Seqüenciar els assoliments professionals després de les fites domèstiques implica que la carrera era secundària.',
+    suggest:'Reordeneu per encapçalar amb la cronologia professional.' },
+  // TO
+  { cat:'tone', weight:2.0, src:'\\bfeisty\\b',
+    explain:'"Feisty" s\'aplica gairebé exclusivament a les dones i implica que la seva assertivitat és inusual o divertida.',
+    suggest:'Substituïu-ho per un descriptor neutral.',
+    rewrites:[
+      { from:'The feisty activist refused to back down.', to:'The tenacious activist refused to back down.' },
+      { from:'Her feisty response silenced her critics.', to:'Her direct response silenced her critics.' },
+      { from:'Known for her feisty personality, she rarely compromised.', to:'Known for her uncompromising positions, she rarely conceded ground in debate.' },
+    ] },
+  { cat:'tone', weight:1.9, src:'\\bplucky\\b',
+    explain:'"Plucky" té un to condescendent, suggerint coratge d\'una manera disminuïda, gairebé infantil.',
+    suggest:'Useu "coratjosa", "determinada" o "persistent".',
+    rewrites:[
+      { from:'The plucky young researcher pressed ahead regardless.', to:'The determined young researcher pressed ahead regardless.' },
+      { from:'Her plucky attitude won her admirers.', to:'Her persistence won her admirers.' },
+      { from:'A plucky outsider, she challenged the establishment.', to:'An outsider, she challenged the establishment.' },
+    ] },
+  { cat:'tone', weight:1.8, src:'\\bsassy\\b',
+    explain:'"Sassy" trivialitza l\'assertivitat o l\'enginy d\'una dona amb un terme de gènere i sovint racialitzat.',
+    suggest:'Descriviu la qualitat específica de manera més precisa.',
+    rewrites:[
+      { from:'Her sassy retorts won over the crowd.', to:'Her sharp wit won over the crowd.' },
+      { from:'She was known for her sassy stage presence.', to:'She was known for her commanding stage presence.' },
+      { from:'Her sassy humour made her a popular broadcaster.', to:'Her quick humour made her a popular broadcaster.' },
+    ] },
+  { cat:'tone', weight:2.1, src:'\\b(?:remarkably|astonishingly|impressively),?\\s+she\\b',
+    explain:'Els adverbis de sorpresa codifiquen una suposició de gènere sobre qui s\'espera que tingui èxit.',
+    suggest:'Elimineu l\'adverbi de sorpresa. Enuncieu l\'assoliment directament.',
+    rewrites:[
+      { from:'Remarkably, she became head of the department at thirty.', to:'She became head of the department at thirty.' },
+      { from:'Astonishingly, she completed the crossing alone.', to:'She completed the crossing alone.' },
+      { from:'Impressively, she had published twenty papers by the age of twenty-five.', to:'By twenty-five she had published twenty papers.' },
+    ] },
+  { cat:'tone', weight:1.5, src:'\\bdefied\\s+(?:the\\s+)?(?:odds|expectations|convention|stereotypes)\\b',
+    explain:'"Defied the odds" implica que l\'èxit era inherentment improbable, sovint codificant suposicions de gènere.',
+    suggest:'Si van existir barreres estructurals reals, nomeneu-les explícitament.',
+    rewrites:[
+      { from:'She defied the odds to become a surgeon.', to:'Despite being excluded from surgical training programmes until 1968, she became a surgeon.' },
+      { from:'She defied expectations and won the championship.', to:'She won the championship, having trained independently after being denied access to the national programme.' },
+      { from:'She defied convention by entering the priesthood.', to:'She became one of the first women ordained after the Church lifted its ban in 1994.' },
+    ] },
+  { cat:'tone', weight:1.3, src:'\\brole\\s+model\\s+for\\s+(?:young\\s+)?(?:women|girls)\\b',
+    explain:'Emmarcar la importància d\'una dona principalment com a model a seguir per a altres dones limita el seu impacte a una esfera de gènere.',
+    suggest:'Descriviu primer la seva contribució al camp en general.',
+    rewrites:[
+      { from:'She became a role model for young women in science.', to:'Her work in quantum chromodynamics advanced the field; she also became a prominent figure for women entering physics.' },
+      { from:'She is widely seen as a role model for girls in sport.', to:'She is one of the most decorated athletes in the history of the sport.' },
+      { from:'Her career made her a role model for women in business.', to:'Her career restructured the investment landscape and influenced a generation of fund managers.' },
+    ] },
+
+  // ── RELACIONAL (addicional) ────────────────────────
+  { cat:'relational', weight:2.0, src:'\\bmuse\\s+(?:of|for|to)\\b',
+    explain:'"Muse of" redueix el subjecte a una font passiva d\'inspiració creativa en lloc d\'un agent creatiu per dret propi.',
+    suggest:'Descriviu el seu propi treball creatiu. Si va influir un altre artista, emmarceu-ho com un intercanvi mutu.',
+    rewrites:[
+      { from:'She was the muse of the poet [Name].', to:'She was a poet and painter whose work influenced [Name], with whom she maintained a creative correspondence.' },
+      { from:'Artists regarded her as their muse throughout the 1920s.', to:'She was a central figure in the Paris art scene of the 1920s, exhibiting her own paintings alongside those of her contemporaries.' },
+      { from:'He credited her as his muse and greatest inspiration.', to:'She was a sculptor and writer; [Name] frequently acknowledged her influence on his work.' },
+    ] },
+  { cat:'relational', weight:2.1, src:'\\bwoman\\s+behind\\b',
+    explain:'"The woman behind" la posiciona en un paper de suport relatiu a l\'èxit d\'un home.',
+    suggest:'Descriviu les seves contribucions directament. Si va col·laborar, descriviu-ho com una col·laboració.',
+    rewrites:[
+      { from:'She was the woman behind his political success.', to:'She co-ordinated the campaign strategy that delivered his election victory.' },
+      { from:'Many credited her as the woman behind the company\'s growth.', to:'She directed the company\'s expansion strategy, growing revenue threefold between 1990 and 2000.' },
+      { from:'She was widely seen as the woman behind the movement.', to:'She was a founding organiser of the movement and drafted its founding charter.' },
+    ] },
+  { cat:'relational', weight:1.8, src:'\\bbest\\s+known\\s+(?:as|for\\s+being)\\s+(?:the\\s+)?(?:wife|partner|daughter|mother|girlfriend)\\s+of\\b',
+    explain:'Emmarcar la renom principal del subjecte com una identitat relacional subordina els seus propis assoliments.',
+    suggest:'Encapçaleu amb allò pel qual el subjecte és conegut per dret propi.',
+    rewrites:[
+      { from:'She is best known as the wife of the composer [Name].', to:'She is best known for her own compositions and her direction of the [Orchestra].' },
+      { from:'She was best known as the daughter of the president.', to:'She was best known as a human rights lawyer who argued landmark cases before the Supreme Court.' },
+      { from:'She is best known as the partner of the novelist [Name].', to:'She is best known as a novelist and critic whose work influenced post-war French literature.' },
+    ] },
+
+  // ── APARENÇA (addicional) ───────────────────────
+  { cat:'appearance', weight:1.8, src:'\\b(?:radiant|luminous|vivacious|willowy)\\b',
+    explain:'Aquests termes són principalment compliments físics, rarament aplicats a homes en la biografia enciclopèdica.',
+    suggest:'Elimineu el descriptor físic, o reemplaceu en termes de presència professional si és genuïnament rellevant.',
+    rewrites:[
+      { from:'The vivacious presenter became a household name.', to:'The presenter became a household name through her long-running documentary series.' },
+      { from:'Her luminous presence lit up every room she entered.', to:'[Elimineu — no és rellevant enciclopèdicament.]' },
+      { from:'A willowy figure, she was immediately recognisable.', to:'Her distinctive voice made her immediately recognisable on radio.' },
+    ] },
+  { cat:'appearance', weight:1.7, src:'\\b(?:photogenic|telegenic)\\b',
+    explain:'"Photogenic" i "telegenic" privilegien l\'aparença visual com una qualitat rellevant, aplicada de manera desproporcionada a les dones.',
+    suggest:'Descriviu l\'efectivitat mediàtica o les habilitats de comunicació en termes professionals.',
+    rewrites:[
+      { from:'Her telegenic presence helped build a wide audience.', to:'Her clear communication style and media fluency helped build a wide audience.' },
+      { from:'She was considered highly photogenic and was frequently featured in press coverage.', to:'She attracted extensive press coverage following her record-breaking solo flight.' },
+      { from:'Her telegenic manner made her a natural choice for the hosting role.', to:'Her broadcasting experience made her a natural choice for the hosting role.' },
+    ] },
+
+  // ── DIMINUTIU (addicional) ───────────────────────
+  { cat:'diminutive', weight:1.6, src:'\\blittle-?known\\b',
+    explain:'"Little-known" pot codificar la suposició que les contribucions de les dones són obscures quan simplement poden estar poc documentades.',
+    suggest:'Considereu si això reflecteix una obscuritat històrica genuïna o un buit de documentació.',
+    rewrites:[
+      { from:'The little-known chemist had discovered the compound in 1921.', to:'The chemist, whose work went largely unrecognised during her lifetime, discovered the compound in 1921.' },
+      { from:'She remains a little-known figure despite her contributions.', to:'Her contributions have been largely overlooked in standard histories of the field.' },
+      { from:'A little-known pioneer, she developed the technique independently.', to:'She developed the technique independently, a contribution that went unacknowledged until the 1980s.' },
+    ] },
+  { cat:'diminutive', weight:1.8, src:'\\bquietly\\s+(?:achieved|worked|contributed|made|became|built|developed|led|founded|wrote|published|established)\\b',
+    explain:'"Quietly achieved" implica que la feina del subjecte era modesta o discreta, minimitzant la seva importància real.',
+    suggest:'Elimineu "quietly". Enuncieu l\'assoliment directament.',
+    rewrites:[
+      { from:'She quietly built one of the most significant art collections of the century.', to:'She assembled one of the most significant art collections of the century.' },
+      { from:'She quietly developed the algorithm that underpins modern search.', to:'She developed the algorithm that underpins modern search.' },
+      { from:'Over three decades she quietly established herself as the leading authority.', to:'Over three decades she established herself as the leading authority.' },
+    ] },
+  { cat:'diminutive', weight:1.9, src:'\\bnevertheless\\s+(?:she\\s+)?(?:persisted|continued|pressed\\s+on|carried\\s+on|persevered)\\b',
+    explain:'"Nevertheless she persisted" emmarca la seva continuació com a remarcable — implicant que la persistència era improbable.',
+    suggest:'Enuncieu el que va fer directament. Nomeneu explícitament qualsevol obstacle.',
+    rewrites:[
+      { from:'Nevertheless, she persisted and completed her doctorate.', to:'Despite being denied laboratory access, she completed her doctorate in 1934.' },
+      { from:'Nevertheless she persisted in her campaign.', to:'She continued her campaign for a further twelve years, despite repeated legislative defeats.' },
+      { from:'Nevertheless she persevered and eventually won recognition.', to:'Recognition came only after decades of institutional resistance to her findings.' },
+    ] },
+  { cat:'diminutive', weight:1.7, src:'\\bonly\\s+(?:a\\s+)?(?:woman|girl|housewife|mother|secretary|nurse|assistant)\\b',
+    explain:'"Only a woman" minimitza la identitat o posició inicial del subjecte.',
+    suggest:'Elimineu "only". Descriviu el rol directament.',
+    rewrites:[
+      { from:'She was only a housewife when she wrote her first novel.', to:'She wrote her first novel while managing her household.' },
+      { from:'She was only a nurse, yet her research was transformative.', to:'She was working as a nurse when her research transformed treatment protocols.' },
+      { from:'She was only an assistant at the time of the discovery.', to:'She was a research assistant at the time of the discovery.' },
+    ] },
+
+  // ── GÈNERE (addicional) ─────────────────────────
+  { cat:'gendered', weight:1.8, src:'\\b(?:career|working)\\s+(?:woman|mother|wife)\\b',
+    explain:'"Career woman" i "working mother" són construccions de gènere sense equivalents masculins comuns.',
+    suggest:'Descriviu la seva professió directament.',
+    rewrites:[
+      { from:'As a career woman, she navigated a male-dominated industry.', to:'As an engineer, she navigated an industry that systematically excluded women from leadership.' },
+      { from:'She was a working mother who somehow found time to write.', to:'She published her first novel in 1962.' },
+      { from:'The career woman broke glass ceilings wherever she went.', to:'She was the first woman appointed to the board of three FTSE 100 companies.' },
+    ] },
+  { cat:'gendered', weight:1.6, src:'\\btomboy\\b',
+    explain:'"Tomboy" emmarca els interessos d\'una nena com a no conformes al gènere, implicant que certes activitats són inherentment masculines.',
+    suggest:'Descriviu els interessos específics directament.',
+    rewrites:[
+      { from:'A tomboy from an early age, she preferred mechanics to dolls.', to:'From an early age she was drawn to mechanics and spent her weekends dismantling engines.' },
+      { from:'Described as a tomboy, she loved climbing and competitive sport.', to:'She was athletic from childhood, competing in regional climbing championships by the age of twelve.' },
+      { from:'Her mother called her a tomboy; she spent more time in the workshop than in the kitchen.', to:'She spent much of her childhood in her father\'s workshop, developing an early interest in engineering.' },
+    ] },
+  { cat:'gendered', weight:1.5, src:'\\b(?:unladylike|ladylike)\\b',
+    explain:'"Ladylike" i "unladylike" apliquen un codi de conducta de gènere, implicant que les dones han de conformar-se a un estàndard de comportament particular.',
+    suggest:'Descriviu el comportament directament sense el marc avaluatiu de gènere.',
+    rewrites:[
+      { from:'Her unladylike directness shocked contemporaries.', to:'Her directness shocked many of her contemporaries.' },
+      { from:'Critics found her behaviour unladylike and inappropriate.', to:'Critics found her behaviour inappropriate for the occasion.' },
+      { from:'She conducted herself in a perfectly ladylike fashion at all times.', to:'[Elimineu — no és rellevant enciclopèdicament.]' },
+    ] },
+
+  // ── OMISSIÓ (addicional) ─────────────────────────
+  { cat:'omission', weight:1.9, src:'\\bstumbled\\s+(?:upon|across|into)\\b',
+    explain:'"Stumbled upon" emmarca un descobriment com accidental en lloc del resultat d\'una expertesa deliberada.',
+    suggest:'Useu un llenguatge actiu i intencional: "she discovered", "her research led to", "she identified".',
+    rewrites:[
+      { from:'She stumbled upon the formula while cleaning the laboratory.', to:'She identified the formula during routine laboratory work.' },
+      { from:'She stumbled across the manuscript in a Paris archive.', to:'Her archival research in Paris uncovered the manuscript.' },
+      { from:'She stumbled into the role of director after the previous incumbent resigned.', to:'She was appointed director following the resignation of her predecessor.' },
+    ] },
+  { cat:'omission', weight:1.7, src:'\\b(?:her|a)\\s+(?:modest|small|humble|minor|little)\\s+(?:contribution|role|part|achievement)\\b',
+    explain:'Qualificar la contribució del subjecte com a "modest" o "minor" imposa un judici diminutiu abans que el lector l\'hagi avaluat.',
+    suggest:'Descriviu la contribució i deixeu que el lector avaluï la seva importància.',
+    rewrites:[
+      { from:'Her modest contribution to the field was widely cited.', to:'Her contribution to the field was widely cited.' },
+      { from:'She played a small part in the development of the theory.', to:'She contributed to the development of the theory, providing the experimental data on which the model was based.' },
+      { from:'Her humble achievement went largely unnoticed at the time.', to:'Her achievement went unnoticed at the time, though it was later recognised as foundational to the field.' },
+    ] },
+  { cat:'omission', weight:1.6, src:'\\b(?:helped|assisted|supported|aided)\\s+(?:to\\s+)?(?:develop|create|discover|establish|found|build|write|lead)\\b',
+    explain:'"Helped" o "assisted" on el subjecte pot haver estat la contribuïdora principal minimitza el seu paper.',
+    suggest:'Verifiqueu el seu paper. Si va liderar o co-liderar, useu "led", "co-developed" o "created".',
+    rewrites:[
+      { from:'She helped to develop the algorithm.', to:'She co-developed the algorithm.' },
+      { from:'She helped to found the organisation in 1948.', to:'She was a co-founder of the organisation in 1948.' },
+      { from:'She assisted in writing the report that changed government policy.', to:'She was a lead author of the report that changed government policy.' },
+    ] },
+
+  // ── TO (addicional) ─────────────────────────────
+  { cat:'tone', weight:2.1, src:'\\b(?:hysterical|shrill|strident|shrewish|bossy)\\b',
+    explain:'Aquests termes patologitzen o trivialitzen l\'expressió assertiva i s\'apliquen gairebé exclusivament a les dones.',
+    suggest:'Elimineu completament. Descriviu el seu estil de comunicació de manera neutral si és rellevant.',
+    rewrites:[
+      { from:'Critics called her shrill and bossy.', to:'Critics described her as forceful and direct.' },
+      { from:'Her strident manner alienated potential allies.', to:'Her uncompromising negotiating style alienated potential allies.' },
+      { from:'She was dismissed as hysterical by her detractors.', to:'Her detractors sought to undermine her arguments by attacking her manner rather than her evidence.' },
+    ] },
+  { cat:'tone', weight:1.8, src:'\\b(?:overly|too)\\s+(?:emotional|sensitive|dramatic|passionate)\\b',
+    explain:'Caracteritzar una dona com "overly emotional" patologitza l\'expressió emocional de manera desproporcionada.',
+    suggest:'Elimineu el qualificador. Descriviu la situació específica sense avaluar la seva resposta.',
+    rewrites:[
+      { from:'Some colleagues found her too emotional in meetings.', to:'Some colleagues clashed with her approach in meetings.' },
+      { from:'She was criticised for being overly dramatic in her public addresses.', to:'Her public addresses were noted for their rhetorical intensity.' },
+      { from:'Critics felt she was too passionate to be objective.', to:'Critics questioned whether her personal investment in the cause affected her analysis.' },
+    ] },
+  { cat:'tone', weight:1.6, src:'\\bopinionated\\b',
+    explain:'"Opinionated" emmarca les opinions fermes d\'una dona com un defecte de personalitat d\'una manera que rarament s\'aplica a homes d\'una convicció equivalent.',
+    suggest:'Substituïu per un llenguatge neutral que descrigui les posicions que defensava.',
+    rewrites:[
+      { from:'The opinionated journalist was divisive.', to:'The journalist held strong views on press freedom and was a polarising figure in media circles.' },
+      { from:'She was known as opinionated and difficult to work with.', to:'She held firm editorial positions and clashed frequently with publishers over content.' },
+      { from:'Her opinionated columns made her many enemies.', to:'Her columns, which argued consistently for criminal justice reform, attracted significant opposition.' },
+    ] },
+  { cat:'tone', weight:1.7, src:'\\bambitious\\b',
+    explain:'"Ambitious" porta connotacions negatives més freqüentment quan s\'aplica a les dones — implicant excés — que quan s\'aplica als homes.',
+    suggest:'Comproveu el context. Si implica excés, substituïu per una descripció dels seus objectius específics.',
+    rewrites:[
+      { from:'Her ambitious nature alienated colleagues.', to:'Her drive to lead the department created friction with colleagues who preferred the existing structure.' },
+      { from:'Some saw her as too ambitious for her own good.', to:'Some colleagues resisted her push for rapid institutional reform.' },
+      { from:'She was ambitious and willing to do whatever it took.', to:'She pursued the directorship systematically, building cross-departmental support over three years.' },
+    ] },
+];
+
+/* ════════════════════════════════════════════════════
+   MAPA DE SECCIONS
+════════════════════════════════════════════════════ */
+function buildSectionMap(fullText, apiSections) {
+  const map = [{ title: null, charPos: 0, index: 0 }];
+  let pos = 0;
+  for (const line of fullText.split('\n')) {
+    const m = line.match(/^(={2,})\s*(.+?)\s*\1\s*$/);
+    if (m) map.push({ title: m[2].trim(), charPos: pos, index: null });
+    pos += line.length + 1;
+  }
+  for (const { index, line: apiTitle } of apiSections) {
+    const entry = map.find(s => s.title === apiTitle);
+    if (entry) entry.index = parseInt(index);
+  }
+  return map;
+}
+
+function getSectionIndex(sentence, fullText, sectionMap) {
+  const pos = fullText.indexOf(sentence.slice(0, 60));
+  if (pos === -1) return 0;
+  let result = 0;
+  for (const sec of sectionMap) {
+    if (sec.charPos <= pos && sec.index !== null) result = sec.index;
+  }
+  return result;
+}
+
+function splitSentences(text) {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/([.!?])\s+([A-Z])/g, '$1\n$2')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 15);
+}
+
+function isNegated(sentence, matchIndex) {
+  const before = sentence.slice(Math.max(0, matchIndex - 50), matchIndex);
+  return /\b(?:not|never|no|without|neither|nor|isn't|wasn't|aren't|weren't|doesn't|didn't|couldn't|shouldn't|wouldn't)\b/i.test(before);
+}
+
+function getSurroundingQuote(sentences, idx) {
+  const parts = [sentences[idx]];
+  if (sentences[idx + 1]) parts.push(sentences[idx + 1]);
+  const joined = parts.join(' ').trim();
+  return joined.length > 400 ? joined.slice(0, 397) + '…' : joined;
+}
+
+function analyseArticle(title, fullText, sectionMap, editBase) {
+  const sentences  = splitSentences(fullText);
+  const totalWords = fullText.split(/\s+/).filter(Boolean).length;
+  const instances  = [];
+  const usedKeys   = {};
+
+  PATTERNS.forEach(({ cat, weight, src, skipCtx, explain, suggest, rewrites }) => {
+    const re      = new RegExp(src, 'gi');
+    const skipRe  = skipCtx ? new RegExp(skipCtx, 'i') : null;
+    sentences.forEach((sentence, idx) => {
+      re.lastIndex = 0;
+      const match = re.exec(sentence);
+      if (!match) return;
+      if (isNegated(sentence, match.index)) return;
+      if (skipRe && skipRe.test(sentence)) return;
+      const key = `${cat}::${sentence.slice(0, 70)}`;
+      if (usedKeys[key]) return;
+      usedKeys[key] = true;
+      const secIdx         = getSectionIndex(sentence, fullText, sectionMap);
+      const sectionEditUrl = `${editBase}&section=${secIdx}`;
+      instances.push({ cat, weight, quote: getSurroundingQuote(sentences, idx), matchedPhrase: match[0], explain, suggest, rewrites, sectionEditUrl });
+    });
+  });
+
+  const topInstances = instances.sort((a, b) => b.weight - a.weight).slice(0, 8);
+
+  const catHits = { relational:0, appearance:0, diminutive:0, gendered:0, omission:0, tone:0 };
+  instances.forEach(({ cat }) => { catHits[cat]++; });
+
+  const structuralNotes = [];
+  const openingText  = sentences.slice(0, 6).join(' ');
+  const personalHits = (openingText.match(/\b(?:married|marriage|husband|wife|children|mother|daughter|sister|born\s+in|her\s+(?:family|parents|father|mother))\b/gi) || []).length;
+  const profHits     = (openingText.match(/\b(?:career|profession|work|published|achieved|won|led|founded|created|discovered|developed|invented|wrote|directed|award|prize|medal|known\s+for|famous\s+for)\b/gi) || []).length;
+  if (personalHits > profHits && personalHits >= 2) {
+    structuralNotes.push('Els paràgrafs inicials privilegien els detalls personals i familiars per sobre dels assoliments professionals — un patró estructural més comú en les biografies de dones que d\'homes.');
+  }
+  const passiveCount = (fullText.match(/\bwas\s+(?:awarded|given|chosen|selected|appointed|named|called|described|considered)\b/gi) || []).length;
+  const passiveRate  = sentences.length > 0 ? passiveCount / sentences.length : 0;
+  if (passiveRate > 0.2) {
+    structuralNotes.push(`Les construccions en veu passiva apareixen en aproximadament el ${Math.round(passiveRate * 100)}% de les frases, eliminant sistemàticament l\'agència del subjecte de la seva pròpia narrativa.`);
+  }
+
+  const totalWeight   = instances.reduce((s, i) => s + i.weight, 0);
+  const densityFactor = totalWeight / Math.max(1, totalWords / 400);
+  const structBonus   = (personalHits > profHits && personalHits >= 2 ? 1.5 : 0) + (passiveRate > 0.2 ? 1 : 0);
+  const combinedLevel = totalWeight + densityFactor + structBonus;
+
+  const activeCats = Object.entries(catHits).filter(([,v])=>v>0).map(([k])=>CAT_META[k].label);
+  let summary;
+  if (topInstances.length === 0 && structuralNotes.length === 0) {
+    summary = `Aquest article sobre ${title} mostra poques evidències de biaix de gènere sistemàtic. El llenguatge és en gran part neutral i el subjecte es tracta amb convencions d'enquadrament que s'apliquen igualment a subjectes de qualsevol gènere. Encara podrien ser possibles millores menors.`;
+  } else {
+    summary = `Aquest article sobre ${title} conté patrons de biaix de gènere detectables. `;
+    if (activeCats.length > 0) summary += `S'han trobat problemes en les categories següents: ${activeCats.slice(0,3).join(', ')}. `;
+    if (structuralNotes.length > 0) summary += `També s'han identificat problemes estructurals en l'organització de l'article. `;
+    summary += `${topInstances.length} fragment${topInstances.length !== 1 ? 's han estat marcats' : ' ha estat marcat'} a continuació. Com sempre, feu servir el vostre propi judici — no tots els fragments marcats seran necessàriament biaix en el seu context específic.`;
+  }
+
+  const positives = [];
+  if (structuralNotes.length === 0 && personalHits <= profHits) positives.push('L\'obertura estableix la identitat professional del subjecte en lloc d\'encapçalar amb detalls personals o familiars.');
+  if (catHits.appearance === 0) positives.push('No s\'han detectat descripcions innecessàries de l\'aparença física.');
+  if (passiveRate < 0.1) positives.push('L\'article usa la veu activa de manera consistent, preservant l\'agència del subjecte en la seva pròpia narrativa.');
+  if (positives.length === 0) positives.push('L\'article segueix una estructura àmpliament cronològica, tot i que s\'haurien d\'abordar els problemes de llenguatge marcats anteriorment.');
+
+  return {
+    summary,
+    catHits,
+    instances: topInstances,
+    positives: positives.slice(0, 3),
+    structuralNotes,
+    stats: { totalWords, totalSentences: sentences.length, passiveRate: Math.round(passiveRate * 100) },
+  };
+}
+
+/* ════════════════════════════════════════════════════
+   API DE LA VIQUIPÈDIA
+════════════════════════════════════════════════════ */
+
+async function searchWiki(query) {
+  if (!query || query.length < 2) return [];
+  const url = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=8&namespace=0&format=json&origin=*`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  const titles = data[1] || [];
+  const descs  = data[2] || [];
+  const urls   = data[3] || [];
+  return titles.map((t, i) => ({ title: t, desc: descs[i] || '', url: urls[i] || '' }));
+}
+
+async function fetchWiki(input) {
+  const clean = input.trim().replace(/^https?:\/\/[a-z.]*wikipedia\.org\/wiki\//i, '');
+  const url   = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(clean)}&prop=extracts|categories&explaintext=true&cllimit=50&format=json&origin=*`;
+  const res   = await fetch(url);
+  if (!res.ok) throw new Error(`L'API de la Viquipèdia ha retornat ${res.status}.`);
+  const data  = await res.json();
+  const page  = Object.values(data.query.pages)[0];
+  if (page.missing !== undefined) throw new Error('Article no trobat a la Viquipèdia. Comproveu el títol o l\'URL.');
+
+  const text = page.extract || '';
+  if (text.length < 100) throw new Error('El text de l\'article és massa curt o no s\'ha pogut recuperar.');
+
+  const cats = (page.categories || []).map(c => c.title.toLowerCase());
+  const womenCatHit = cats.some(c =>
+    /\bwom[ae]n\b|\bfemale\b|\bher\b/.test(c) ||
+    /women's|she-|lady|ladies|actress|queen|empress|duchess|princess/.test(c)
+  );
+
+  const excerpt = text.slice(0, 3000).toLowerCase();
+  const sheCount  = (excerpt.match(/\b(?:she|her|hers|herself)\b/g) || []).length;
+  const heCount   = (excerpt.match(/\b(?:he|him|his|himself)\b/g) || []).length;
+  const isFemaleSubject = womenCatHit || (sheCount > heCount && sheCount >= 3);
+
+  if (!isFemaleSubject) {
+    throw new Error(
+      `"${page.title}" queda fora de l'àmbit d'aquesta eina. ` +
+      'Analitza el biaix de gènere específicament en biografies de dones a la Viquipèdia. ' +
+      'Cerqueu una biografia d\'una dona per continuar.'
+    );
+  }
+
+  const slug  = encodeURIComponent(page.title.replace(/ /g, '_'));
+  const editBase = `https://en.wikipedia.org/w/index.php?title=${slug}&action=edit`;
+
+  let apiSections = [];
+  try {
+    const secRes  = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(page.title)}&prop=sections&format=json&origin=*`);
+    const secData = await secRes.json();
+    apiSections = secData.parse?.sections || [];
+  } catch(_) { }
+
+  return {
+    text,
+    title:    page.title,
+    url:      `https://en.wikipedia.org/wiki/${slug}`,
+    editBase,
+    editUrl:  editBase,
+    apiSections,
+  };
+}
+
+/* ════════════════════════════════════════════════════
+   COMPONENT DESPLEGABLE DE CERCA
+════════════════════════════════════════════════════ */
+function SearchDropdown({ value, onChange, onSelect, onSubmit, busy }) {
+  const [results,   setResults]   = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [open,      setOpen]      = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const debounceRef = useRef(null);
+  const wrapRef     = useRef(null);
+
+  useEffect(() => {
+    const handler = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (value.length < 2) { setResults([]); setOpen(false); return; }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const hits = await searchWiki(value);
+        setResults(hits);
+        setOpen(hits.length > 0);
+        setActiveIdx(-1);
+      } catch(_) { setResults([]); }
+      finally { setSearching(false); }
+    }, 280);
+    return () => clearTimeout(debounceRef.current);
+  }, [value]);
+
+  const pick = (item) => {
+    onSelect(item.title);
+    setOpen(false);
+    setResults([]);
+  };
+
+  const handleKey = (e) => {
+    if (!open) { if (e.key === 'Enter') onSubmit(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i+1, results.length-1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i-1, -1)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && results[activeIdx]) pick(results[activeIdx]);
+      else { setOpen(false); onSubmit(); }
+    }
+    else if (e.key === 'Escape') { setOpen(false); }
+  };
+
+  return h('div', { className:'dropdown-wrap', ref: wrapRef },
+    h('div', { style:{ position:'relative' } },
+      h('input', {
+        type:'text', value, autoComplete:'off',
+        placeholder:'Cerqueu a la Viquipèdia una biografia d\'una dona…',
+        onChange: e => { onChange(e.target.value); },
+        onFocus:  () => { if (results.length > 0) setOpen(true); },
+        onKeyDown: handleKey,
+        style:{ width:'100%', padding:'13px 40px 13px 15px', fontSize:15, border:'1.5px solid #C8B8A8', borderRadius:3, background:'#fff', fontFamily:"'Source Serif 4',serif", color:'#0A0A0A' }
+      }),
+      searching && h('div', { style:{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', width:16, height:16, border:'2px solid #E3120B', borderTopColor:'transparent', borderRadius:'50%', animation:'spin .7s linear infinite' } })
+    ),
+
+    open && h('div', { className:'dropdown-list' },
+      results.length === 0
+        ? h('div', { className:'dropdown-searching' }, 'No s\'han trobat resultats')
+        : results.map((item, i) =>
+            h('div', {
+              key: item.title,
+              className: `dropdown-item${i === activeIdx ? ' active' : ''}`,
+              onMouseDown: () => pick(item),
+              onMouseEnter: () => setActiveIdx(i),
+            },
+              h('div', { className:'thumb-placeholder' }, '♀'),
+              h('div', { style:{ flex:1, minWidth:0 } },
+                h('div', { style:{ fontWeight:600, fontSize:14, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, item.title),
+                item.desc && h('div', { style:{ fontSize:11, color:'#888', fontFamily:"'IBM Plex Mono',monospace", marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, item.desc)
+              )
+            )
+          )
+    )
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   COMPONENTS D'INTERFÍCIE
+════════════════════════════════════════════════════ */
+
+function CatPill({ catKey, count }) {
+  const c = CAT_META[catKey];
+  if (count === 0) return null;
+  return h('span', {
+    style:{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', background:c.bg, color:c.color, fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.08em', textTransform:'uppercase', fontWeight:700, marginRight:5, marginBottom:5, border:`1px solid ${c.color}33` }
+  }, `${c.icon} ${c.label} (${count})`);
+}
+
+function InstanceCard({ inst }) {
+  const [open, setOpen] = useState(false);
+  const c = CAT_META[inst.cat] || CAT_META.tone;
+  const shortQuote = inst.quote.length > 130 ? inst.quote.slice(0, 127) + '…' : inst.quote;
+
+  const example = React.useMemo(() => {
+    if (!inst.rewrites || inst.rewrites.length === 0) return null;
+    return inst.rewrites[Math.floor(Math.random() * inst.rewrites.length)];
+  }, [inst.rewrites]);
+
+  return h('div', { className:'inst-row', style:{ background:'#fff', borderLeft:`4px solid ${c.color}`, border:`1px solid ${c.color}22`, borderLeft:`4px solid ${c.color}`, marginBottom:9 } },
+    h('button', { onClick:()=>setOpen(o=>!o), style:{ width:'100%', background:'none', border:'none', padding:'13px 16px', textAlign:'left', cursor:'pointer', display:'flex', gap:10, alignItems:'flex-start' } },
+      h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.1em', textTransform:'uppercase', padding:'3px 8px', background:c.bg, color:c.color, whiteSpace:'nowrap', marginTop:1, flexShrink:0, fontWeight:700 } }, `${c.icon} ${c.label}`),
+      h('span', { style:{ fontSize:14, lineHeight:1.6, color:'#555', fontStyle:'italic', flex:1 } }, `"${shortQuote}"`),
+      h('span', { style:{ color:'#ccc', fontSize:12, marginTop:2, flexShrink:0 } }, open?'▲':'▼')
+    ),
+    open && h('div', { style:{ padding:'0 16px 16px' } },
+      h('div', { style:{ marginBottom:10 } },
+        h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.12em', textTransform:'uppercase', color:'#888' } }, 'Expressió detectada: '),
+        h('code', { style:{ background:'#fff3cd', padding:'1px 6px', fontSize:13, color:'#7a5400', border:'1px solid #f0d060' } }, inst.matchedPhrase)
+      ),
+      h('div', { style:{ padding:'11px 15px', background:c.bg, fontSize:14, lineHeight:1.75, fontStyle:'italic', color:'#444', marginBottom:12 } }, `"${inst.quote}"`),
+      h('div', { style:{ marginBottom:12 } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.13em', textTransform:'uppercase', color:'#888', marginBottom:4 } }, "Per què és biaix"),
+        h('div', { style:{ fontSize:14, lineHeight:1.75, color:'#444', fontWeight:300 } }, inst.explain)
+      ),
+      h('div', { style:{ padding:'11px 15px', background:'#e9f6ee', border:'1px solid #b8dfc9', marginBottom:12 } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.13em', textTransform:'uppercase', color:'#1a7a4a', marginBottom:4 } }, 'Enfocament suggerit'),
+        h('div', { style:{ fontSize:14, lineHeight:1.75, color:'#1a3a28', fontWeight:300 } }, inst.suggest)
+      ),
+      example && h('div', { style:{ marginBottom:12 } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.13em', textTransform:'uppercase', color:'#888', marginBottom:8 } }, 'Exemple de reescriptura'),
+        h('div', { style:{ display:'flex', flexDirection:'column', gap:6 } },
+          h('div', { style:{ display:'flex', gap:10, alignItems:'baseline' } },
+            h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#c0392b', letterSpacing:'0.1em', textTransform:'uppercase', flexShrink:0, marginTop:2 } }, 'Abans'),
+            h('div', { style:{ fontSize:13, lineHeight:1.65, color:'#999', fontStyle:'italic', textDecoration:'line-through', textDecorationColor:'#e0a0a0' } }, example.from)
+          ),
+          h('div', { style:{ display:'flex', gap:10, alignItems:'baseline' } },
+            h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#1a7a4a', letterSpacing:'0.1em', textTransform:'uppercase', flexShrink:0, marginTop:2 } }, 'Després'),
+            h('div', { style:{ fontSize:13, lineHeight:1.65, color:'#1a3a28', fontStyle:'italic' } }, example.to)
+          )
+        )
+      ),
+      h('a', { href: inst.sectionEditUrl, target:'_blank', rel:'noopener noreferrer', style:{ display:'inline-block', padding:'7px 15px', background:'#0A0A0A', color:'#FAF8F5', textDecoration:'none', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.1em', textTransform:'uppercase' } }, 'Corregiu a la Viquipèdia →')
+    )
+  );
+}
+
+function Report({ result, title, url, editUrl, generatedAt }) {
+  const { summary, catHits, instances, positives, structuralNotes, stats } = result;
+
+  return h('div', { className:'report-anim' },
+
+    h('div', { style:{ background:'#0A0A0A', color:'#FAF8F5', padding:'22px 26px' } },
+      h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 } },
+        h('div', null,
+          h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.2em', textTransform:'uppercase', color:'#E3120B', marginBottom:7 } }, 'Auditoria Algorítmica de Biaix — Biografia de Dona'),
+          h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:'clamp(17px,3vw,24px)', fontWeight:800, lineHeight:1.2 } }, title),
+          h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#555', marginTop:7, letterSpacing:'0.05em' } },
+            `${stats.totalWords.toLocaleString()} paraules · ${stats.totalSentences} frases · ${stats.passiveRate}% veu passiva · ${generatedAt}`)
+        ),
+        h('div', { style:{ display:'flex', gap:8, flexWrap:'wrap' }, className:'no-print' },
+          h('a', { href:url, target:'_blank', rel:'noopener noreferrer', style:{ padding:'8px 14px', border:'1px solid #444', color:'#bbb', textDecoration:'none', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.07em' } }, 'Veure ↗'),
+          h('a', { href:editUrl, target:'_blank', rel:'noopener noreferrer', style:{ padding:'8px 14px', background:'#E3120B', color:'#fff', textDecoration:'none', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.07em', fontWeight:700 } }, '✏ Edita a la Viquipèdia'),
+          h('button', { onClick:()=>window.print(), style:{ padding:'8px 14px', border:'1px solid #444', background:'none', color:'#aaa', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.07em', cursor:'pointer' } }, '⎙ PDF')
+        )
+      )
+    ),
+
+    h('div', { style:{ padding:'22px 26px' } },
+
+      h('div', { style:{ paddingBottom:22, borderBottom:'1px solid #ece7e0' } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.15em', textTransform:'uppercase', color:'#888', marginBottom:10 } }, 'Resum'),
+        h('div', { style:{ fontSize:14, lineHeight:1.85, color:'#444', fontWeight:300 } }, summary),
+        Object.values(catHits).some(v=>v>0) && h('div', { style:{ marginTop:16 } },
+          h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.15em', textTransform:'uppercase', color:'#888', marginBottom:8 } }, 'Categories de biaix detectades'),
+          h('div', { style:{ display:'flex', flexWrap:'wrap' } },
+            ...Object.entries(catHits).map(([k,v]) => h(CatPill, { key:k, catKey:k, count:v }))
+          )
+        )
+      ),
+
+      structuralNotes.length > 0 && h('div', { style:{ margin:'18px 0 0', padding:'14px 18px', background:'#fff8f0', border:'1px solid #e8c88a', borderLeft:'4px solid #c87800' } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.13em', textTransform:'uppercase', color:'#c87800', marginBottom:9 } }, '⚠ Problemes Estructurals Detectats'),
+        ...structuralNotes.map((n,i) =>
+          h('div', { key:i, style:{ fontSize:13, lineHeight:1.75, color:'#6a4800', fontWeight:300, marginBottom:i<structuralNotes.length-1?7:0 } }, `— ${n}`)
+        )
+      ),
+
+      h('div', { style:{ paddingTop:22 } },
+        h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:14, flexWrap:'wrap', gap:8 } },
+          h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:19, fontWeight:800 } }, 'Fragments Marcats'),
+          h('div', { className:'no-print', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#bbb', letterSpacing:'0.07em' } }, 'Feu clic per ampliar')
+        ),
+        instances.length > 0
+          ? instances.map((inst,i) => h(InstanceCard, { key:i, inst }))
+          : h('div', { style:{ padding:22, background:'#e9f6ee', border:'1px solid #b8dfc9', textAlign:'center', color:'#1a7a4a' } },
+              h('div', { style:{ fontSize:20, marginBottom:5 } }, '✓'),
+              h('div', { style:{ fontFamily:"'Playfair Display',serif", fontWeight:700 } }, 'No s\'han detectat patrons de biaix')
+            )
+      ),
+
+      positives.length > 0 && h('div', { style:{ marginTop:20, padding:'16px 20px', background:'#e9f6ee', border:'1px solid #b8dfc9' } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.15em', textTransform:'uppercase', color:'#1a7a4a', marginBottom:10 } }, '✓ Què fa bé aquest article'),
+        ...positives.map((p,i) => h('div',{key:i,style:{fontSize:13,lineHeight:1.75,color:'#1a4a30',fontWeight:300,marginBottom:i<positives.length-1?5:0}},`— ${p}`))
+      ),
+
+      h('div', { className:'no-print', style:{ marginTop:20, padding:'16px 20px', background:'#fff', border:'1px solid #DDD4C8' } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.15em', textTransform:'uppercase', color:'#888', marginBottom:10 } }, 'Com aplicar aquestes correccions'),
+        h('ol', { style:{ paddingLeft:17, fontSize:13, lineHeight:2, color:'#555', fontWeight:300 } },
+          h('li', null, 'Feu clic a ', h('strong',{style:{fontWeight:600}},'Edita a la Viquipèdia'), ' a la capçalera superior'),
+          h('li', null, 'Useu ', h('kbd',null,'Ctrl+F'), ' / ', h('kbd',null,'⌘F'), ' per trobar el fragment marcat'),
+          h('li', null, 'Apliqueu l\'enfocament de reescriptura suggerit — o la vostra pròpia versió millorada'),
+          h('li', null, 'Resum d\'edició: ', h('em',null,'"Reducció del biaix de gènere, reemmarcat al voltant de la identitat professional (WP:NPOV)"')),
+          h('li', null, 'Feu clic a ', h('strong',{style:{fontWeight:600}},'Publica els canvis'))
+        )
+      ),
+
+      h('div', { style:{ marginTop:14, padding:'10px 16px', background:'#f4f0ea', border:'1px solid #ddd4c8', fontSize:11, color:'#999', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.03em', lineHeight:1.7 } },
+        h('strong',{style:{color:'#777'}},'Sobre aquesta anàlisi: '),
+        `Concordança de patrons respecte a ${PATTERNS.length} indicadors de biaix en 6 categories. Els resultats es basen en regles, no en IA generativa. Reviseu cada fragment marcat abans d'editar — el context és important i no totes les coincidències seran necessàriament biaix en el seu context específic.`
+      )
+    )
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   APLICACIÓ
+════════════════════════════════════════════════════ */
+function App() {
+  const [query,   setQuery]   = useState('');
+  const [phase,   setPhase]   = useState('idle');
+  const [errMsg,  setErr]     = useState('');
+  const [result,  setResult]  = useState(null);
+  const [meta,    setMeta]    = useState(null);
+  const reportRef = useRef(null);
+
+  const run = useCallback(async (titleOverride) => {
+    const target = (titleOverride || query).trim();
+    if (!target || phase === 'loading') return;
+    setPhase('loading'); setErr(''); setResult(null); setMeta(null);
+    try {
+      const wiki   = await fetchWiki(target);
+      const sectionMap = buildSectionMap(wiki.text, wiki.apiSections);
+      const report = analyseArticle(wiki.title, wiki.text, sectionMap, wiki.editBase);
+      setResult(report);
+      setMeta({ ...wiki, generatedAt: new Date().toLocaleString('ca-ES', { dateStyle:'medium', timeStyle:'short' }) });
+      setPhase('done');
+      setTimeout(()=>reportRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
+    } catch(err) {
+      setErr(err.message || 'Alguna cosa ha fallat. Si us plau, torneu-ho a intentar.');
+      setPhase('error');
+    }
+  }, [query, phase]);
+
+  const busy = phase === 'loading';
+
+  return h('div', { style:{ fontFamily:"'Source Serif 4',Georgia,serif", minHeight:'100vh', background:'#FAF8F5', color:'#0A0A0A' } },
+
+    h('div', { style:{ background:'#E3120B', height:5 } }),
+
+    h('div', { style:{ background:'#0A0A0A' } },
+      h('div', { style:{ maxWidth:900, margin:'0 auto', padding:'18px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 } },
+        h('div', null,
+          h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.22em', textTransform:'uppercase', color:'#E3120B', marginBottom:5 } }, 'Viquipèdia · Eines d\'Equitat de Gènere'),
+          h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:'clamp(20px,4vw,32px)', fontWeight:800, color:'#FAF8F5', letterSpacing:'-0.02em', lineHeight:1.1 } },
+            'Detector de Biaix ', h('span',{style:{fontStyle:'italic',color:'#E3120B'}},'de Gènere'))
+        ),
+        h('div', { style:{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 } },
+          h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#444', letterSpacing:'0.06em', textAlign:'right', lineHeight:1.7 } },
+            'Només biografies de dones · Algorítmic · Sense IA · Cap dada enviada externament'),
+        )
+      )
+    ),
+
+    h('div', { className:'no-print', style:{ background:'#F0E8DF', borderBottom:'2px solid #0A0A0A' } },
+      h('div', { style:{ maxWidth:900, margin:'0 auto', padding:'24px' } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.15em', textTransform:'uppercase', color:'#888', marginBottom:10 } },
+          `Cerqueu a la Viquipèdia una biografia d'una dona — comprova ${PATTERNS.length} patrons de biaix`),
+        h('div', { style:{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-start' } },
+          h(SearchDropdown, {
+            value: query,
+            onChange: setQuery,
+            onSelect: (title) => { setQuery(title); run(title); },
+            onSubmit: () => run(),
+            busy,
+          }),
+          h('button', {
+            onClick: ()=>run(), disabled: busy || !query.trim(),
+            style:{ padding:'13px 26px', background:busy?'#aaa':'#E3120B', color:'#fff', border:'none', borderRadius:3, fontSize:13, fontWeight:700, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.08em', whiteSpace:'nowrap', cursor:busy?'not-allowed':'pointer', flexShrink:0 }
+          }, busy ? '⏳ Analitzant…' : 'Analitzar →')
+        ),
+
+        h('div', { style:{ marginTop:10, display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' } },
+          h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.12em', textTransform:'uppercase', color:'#aaa' } }, 'Proveu:'),
+          ...['Marie Curie','Frida Kahlo','Malala Yousafzai','Harriet Tubman','Wangari Maathai'].map(n=>
+            h('button',{key:n, onClick:()=>{ setQuery(n); run(n); },
+              style:{padding:'3px 9px',border:'1px solid #DDD4C8',background:'transparent',color:'#888',fontSize:12,cursor:'pointer',fontFamily:"'Source Serif 4',serif",fontStyle:'italic'}},n)
+          )
+        ),
+
+        phase==='error' && h('div',{style:{marginTop:8,padding:'9px 13px',background:'#fde8ec',border:'1px solid #f0b0b8',fontFamily:"'IBM Plex Mono',monospace",fontSize:12,color:'#c0392b',letterSpacing:'0.03em',lineHeight:1.6}},`⚠ ${errMsg}`)
+      )
+    ),
+
+    h('div', { ref:reportRef, style:{ maxWidth:900, margin:'0 auto' } },
+      phase==='done' && result && meta
+        ? h(Report, { result, title:meta.title, url:meta.url, editUrl:meta.editUrl, generatedAt:meta.generatedAt })
+        : phase==='idle' && h('div', { style:{ textAlign:'center', padding:'64px 24px' } },
+            h('div',{style:{fontSize:48,marginBottom:14,opacity:.1}},'⚖'),
+            h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:16,fontStyle:'italic',color:'#bbb',maxWidth:340,margin:'0 auto',lineHeight:1.9}},
+              'Cerqueu una biografia de dona a la Viquipèdia per generar una auditoria de biaix instantània — sense IA ni clau API.'),
+            h('div',{style:{marginTop:14,fontFamily:"'IBM Plex Mono',monospace",fontSize:9,letterSpacing:'0.12em',color:'#ccc'}},
+              `${PATTERNS.length} indicadors de biaix · 6 categories · només biografies de dones · completament al client`)
+          )
+    ),
+
+    h('div',{className:'tool-footer no-print'},
+      h('span',null,
+        'Creat per ',
+        h('a',{href:'mailto:nethahussain@gmail.com'},'Netha Hussain'),
+        ' · nethahussain@gmail.com'
+      ),
+      h('a',{href:'https://github.com/nethahussain/wikipedia-gender-bias-detector',target:'_blank',rel:'noopener noreferrer'},'Veure el codi font a GitHub →')
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
