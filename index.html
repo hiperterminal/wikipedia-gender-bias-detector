@@ -41,7 +41,10 @@
     .dropdown-item .thumb-placeholder { width:32px; height:32px; background:#ece7e0; border-radius:2px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px; color:#aaa; }
     .dropdown-searching { padding:10px 14px; font-family:'IBM Plex Mono',monospace; fontSize:10px; color:#aaa; font-size:11px; }
 
-    @media print { .no-print { display:none !important; } body { background:#fff; } }
+    /* ── Footer ── */
+    .tool-footer { background:#0A0A0A; color:#888; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:18px 26px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; letter-spacing:0.05em; }
+    .tool-footer a { color:#E3120B; text-decoration:none; }
+    .tool-footer a:hover { text-decoration:underline; }
     @media (max-width:680px) { .grid2 { grid-template-columns:1fr !important; } }
   </style>
 </head>
@@ -985,11 +988,13 @@ function App() {
           )
     ),
 
-    h('div',{className:'no-print',style:{background:'#0A0A0A',marginTop:48,padding:'16px 24px'}},
-      h('div',{style:{maxWidth:900,margin:'0 auto',display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:8,fontFamily:"'IBM Plex Mono',monospace",fontSize:9,letterSpacing:'0.06em',color:'#444'}},
-        h('span',null,'Wikipedia ',h('span',{style:{color:'#E3120B'}},'Bias Audit'),' — Women\'s Biographies · Algorithmic · No AI'),
-        h('span',null,'Wikipedia content: CC BY-SA 4.0')
-      )
+    h('div',{className:'tool-footer no-print'},
+      h('span',null,
+        'Created by ',
+        h('a',{href:'mailto:nethahussain@gmail.com'},'Netha Hussain'),
+        ' · nethahussain@gmail.com'
+      ),
+      h('a',{href:'https://github.com/nethahussain/wikipedia-gender-bias-detector',target:'_blank',rel:'noopener noreferrer'},'View source on GitHub →')
     )
   );
 }
