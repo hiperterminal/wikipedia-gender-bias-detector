@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Detector de Sesgo de Género — Biografías de Mujeres en Wikipedia</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,800;1,400;1,700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Source Serif 4', Georgia, serif; background: #FAF8F5; color: #0A0A0A; -webkit-font-smoothing: antialiased; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes spin   { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+    input:focus { outline:none; border-color:#E3120B !important; box-shadow:0 0 0 3px rgba(227,18,11,0.1); }
+    a:hover { opacity:.8; }
+    button:hover:not(:disabled) { opacity:.88; }
+    button:disabled { cursor:not-allowed; }
+    .report-anim { animation: fadeUp .4s ease both; }
+    .inst-row { transition: background .12s; }
+    .inst-row:hover { background: #fafafa; }
+    kbd { padding:1px 5px; background:#f0f0f0; border:1px solid #ccc; border-radius:3px; font-size:11px; font-family:'IBM Plex Mono',monospace; }
+    .dropdown-wrap { position:relative; flex:1; min-width:220px; }
+    .dropdown-list { position:absolute; top:calc(100% + 3px); left:0; right:0; z-index:100; background:#fff; border:1.5px solid #E3120B; border-radius:3px; max-height:260px; overflow-y:auto; box-shadow:0 6px 24px rgba(0,0,0,0.12); }
+    .dropdown-item { padding:10px 14px; cursor:pointer; font-size:14px; font-family:'Source Serif 4',serif; color:#0A0A0A; border-bottom:1px solid #f0ebe4; display:flex; align-items:center; gap:8px; }
+    .dropdown-item:last-child { border-bottom:none; }
+    .dropdown-item:hover, .dropdown-item.active { background:#fdf5f5; color:#E3120B; }
+    .dropdown-item .thumb-placeholder { width:32px; height:32px; background:#ece7e0; border-radius:2px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px; color:#aaa; }
+    .dropdown-searching { padding:10px 14px; font-family:'IBM Plex Mono',monospace; color:#aaa; font-size:11px; }
+    .tool-footer { background:#0A0A0A; color:#888; font-family:'IBM Plex Mono',monospace; font-size:11px; padding:18px 26px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; letter-spacing:0.05em; }
+    .tool-footer a { color:#E3120B; text-decoration:none; }
+    .tool-footer a:hover { text-decoration:underline; }
+    @media print { .no-print { display:none !important; } body { background:#fff; } }
+    @media (max-width:680px) { .grid2 { grid-template-columns:1fr !important; } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+'use strict';
+const h = React.createElement;
+const { useState, useCallback, useRef, useEffect } = React;
+
+/* ════════════════════════════════════════════════════
+   METADATOS DE CATEGORÍAS
+════════════════════════════════════════════════════ */
+const CAT_META = {
+  relational: { label:'Definición relacional',      color:'#c0313f', bg:'#fde8ec', icon:'👥' },
+  appearance: { label:'Enfoque en la apariencia',   color:'#b85a0a', bg:'#fdf0e6', icon:'👁'  },
+  diminutive: { label:'Lenguaje diminutivo',         color:'#6b30cc', bg:'#f3effd', icon:'↓'  },
+  gendered:   { label:'Marca de género innecesaria', color:'#0c6e63', bg:'#e5f5f3', icon:'⚧'  },
+  omission:   { label:'Minimización de logros',      color:'#1850a0', bg:'#e8f0fc', icon:'📊' },
+  tone:       { label:'Tono condescendiente',        color:'#8a2e2e', bg:'#faeaea', icon:'💬' },
+};
+
+/* ════════════════════════════════════════════════════
+   BIBLIOTECA DE PATRONES — ESPAÑOL (49 patrones)
+════════════════════════════════════════════════════ */
+const PATTERNS = [
+
+  // ── DEFINICIÓN RELACIONAL ────────────────────────
+  { cat:'relational', weight:2.2, src:'\\besposa\\s+de\\b|\\bcónyuge\\s+de\\b',
+    explain:'Definir a la sujeto como la esposa de alguien sitúa su identidad en relación con un hombre, no en mérito propio. Este encuadre rara vez se aplica a hombres de logros equivalentes.',
+    suggest:'Abre con el título profesional de la sujeto o su contribución más significativa. Su matrimonio puede mencionarse más adelante como contexto biográfico.',
+    rewrites:[
+      { from:'Era la esposa del compositor [Nombre] y lo acompañaba en sus giras.', to:'Mezzosoprano de reconocimiento internacional, también estuvo casada con el compositor [Nombre].' },
+      { from:'Como esposa del primer ministro, se convirtió en figura pública.', to:'Se convirtió en figura pública por méritos propios como diplomática y, posteriormente, como escritora.' },
+      { from:'Nacida en Madrid, era la esposa del industrial [Nombre].', to:'Nacida en Madrid, fue química textil y más tarde contrajo matrimonio con el industrial [Nombre].' },
+    ] },
+
+  { cat:'relational', weight:1.7, src:'\\bhija\\s+de\\b',
+    explain:'Presentar a la sujeto a través de su filiación familiar antepone el linaje a sus propios logros.',
+    suggest:'Comienza con el rol o logro propio de la sujeto. La filiación corresponde a una sección de «Primeros años», no al encuadre inicial.',
+    rewrites:[
+      { from:'Hija de un diplomático, se convirtió en arquitecta de renombre.', to:'Arquitecta de renombre, creció en un hogar diplomático.' },
+      { from:'Hija del pintor [Nombre], se formó en la Escuela de Bellas Artes.', to:'Se formó en la Escuela de Bellas Artes y llegó a superar la reputación de su padre, [Nombre].' },
+      { from:'Hija de una obrera, lideró el movimiento laboral.', to:'Lideró el movimiento laboral; procedía de una familia obrera.' },
+    ] },
+
+  { cat:'relational', weight:2.0, src:'\\bviuda\\s+(?:de|tras)\\b|\\benvió(?:d[ao])\\s+(?:de|tras)\\b',
+    explain:'Definir a la sujeto a través del duelo ancla su identidad a una pareja fallecida en lugar de a su propia obra.',
+    suggest:'Elimina o reubica esta referencia. Si es relevante, menciona la muerte de su pareja solo en contexto cronológico.' },
+
+  { cat:'relational', weight:1.9, src:'\\bsu\\s+(?:marido|esposo|pareja|padre|hermano)\\s+(?:la\\s+)?(?:ayudó|animó|apoyó|alentó|impulsó|introdujo|inspiró)\\b',
+    explain:'Atribuir a una figura masculina el mérito de impulsar la carrera de la sujeto implica que ella necesitó apoyo masculino para triunfar. Este sesgo estructural rara vez se aplica a hombres.',
+    suggest:'Reformula para mostrar a la sujeto como agente de su propia carrera. Si existió colaboración, descríbela como una relación entre iguales.',
+    rewrites:[
+      { from:'Su marido la animó a dedicarse a la pintura.', to:'Se dedicó a la pintura a finales de sus veinte años, desarrollando un estilo propio.' },
+      { from:'Su padre la introdujo en las matemáticas desde pequeña.', to:'Mostró desde temprana edad una marcada aptitud para las matemáticas, que cultivó con profesores de la universidad.' },
+      { from:'Su hermano la ayudó a acceder al laboratorio.', to:'Obtuvo acceso al laboratorio a través del programa de investigación visitante de la universidad.' },
+    ] },
+
+  { cat:'relational', weight:1.5, src:'\\bmadre\\s+de\\s+(?:(?:un[ao]|dos|tres|cuatro|cinco|seis|siete|ocho|\\d+)\\s+)?hijos\\b',
+    explain:'Presentar la maternidad antes que la identidad profesional refleja un doble estándar persistente en la escritura biográfica.',
+    suggest:'Traslada los detalles familiares a una sección de «Vida personal». Establece primero la identidad profesional.' },
+
+  { cat:'relational', weight:2.0, src:'\\bmusa\\s+(?:de|para)\\b',
+    explain:'"Musa de" reduce a la sujeto a una fuente pasiva de inspiración creativa para otro —generalmente masculino— en lugar de reconocerla como agente creativa.',
+    suggest:'Describe su propia obra creativa. Si influyó en otro artista, encuádralo como intercambio mutuo.',
+    rewrites:[
+      { from:'Fue la musa del poeta [Nombre].', to:'Fue poeta y pintora; su obra influyó en [Nombre], con quien mantuvo una correspondencia creativa.' },
+      { from:'Los artistas de la época la consideraban su musa.', to:'Fue una figura central en la escena artística de los años veinte y expuso su propia obra junto a la de sus contemporáneos.' },
+    ] },
+
+  { cat:'relational', weight:2.1, src:'\\bla\\s+mujer\\s+detr[aá]s\\s+de\\b',
+    explain:'"La mujer detrás de" la sitúa en un papel de apoyo secundario respecto al éxito de un hombre, insinuando que su importancia es derivada.',
+    suggest:'Describe sus contribuciones directamente. Si colaboró, describe esa colaboración como tal.',
+    rewrites:[
+      { from:'Fue la mujer detrás del éxito político de su marido.', to:'Coordinó la estrategia de campaña que llevó a su marido a la victoria electoral.' },
+      { from:'Muchos la consideraban la mujer detrás del crecimiento de la empresa.', to:'Dirigió la estrategia de expansión de la empresa, triplicando los ingresos entre 1990 y 2000.' },
+    ] },
+
+  { cat:'relational', weight:1.8, src:'\\bm[aá]s\\s+conocida\\s+(?:como|por\\s+ser)\\s+(?:la\\s+)?(?:esposa|pareja|hija|madre|novia)\\s+de\\b',
+    explain:'Encuadrar la fama principal de la sujeto como una identidad relacional subordina sus propios logros a su vínculo con otra persona.',
+    suggest:'Comienza con aquello por lo que la sujeto es conocida en mérito propio.',
+    rewrites:[
+      { from:'Es más conocida como la esposa del compositor [Nombre].', to:'Es conocida por sus propias composiciones y por dirigir la [Orquesta].' },
+      { from:'Era más conocida como hija del presidente.', to:'Era conocida como abogada de derechos humanos que defendió casos históricos ante el Tribunal Supremo.' },
+    ] },
+
+  // ── ENFOQUE EN LA APARIENCIA ─────────────────────
+  { cat:'appearance', weight:2.0, src:'\\b(?:hermosa|bella|atractiva|guapa|preciosa|deslumbrante|glamurosa|encantadora|ravishing)\\b',
+    explain:'Comentar el atractivo físico de la sujeto rara vez aparece en las biografías de hombres de logros comparables e implica que la apariencia es una característica definitoria.',
+    suggest:'Elimina el descriptor físico. Si alguna cualidad de presencia es relevante, descríbela en términos de comportamiento profesional.',
+    rewrites:[
+      { from:'La hermosa científica cautivó al público con su conferencia.', to:'La científica cautivó al público con su conferencia.' },
+      { from:'Atractiva y brillante, ascendió rápidamente en su carrera.', to:'Ascendió rápidamente en su carrera.' },
+    ] },
+
+  { cat:'appearance', weight:2.1, src:'\\b(?:esbelta|delgada|menuda|voluptuosa|curvilínea|escultural)\\s+(?:figura|silueta|cuerpo|físico)\\b',
+    explain:'Describir la figura de una mujer en una biografía enciclopédica es casi siempre irrelevante y la reduce a su forma física.',
+    suggest:'Elimina completamente. Las dimensiones físicas no son enciclopédicamente relevantes en una biografía profesional.',
+    rewrites:[
+      { from:'Su esbelta figura la hacía inconfundible sobre el escenario.', to:'[Eliminar — no es enciclopédicamente relevante.]' },
+      { from:'Su escultural figura imponía atención en los actos públicos.', to:'Imponía atención en los actos públicos.' },
+    ] },
+
+  { cat:'appearance', weight:2.2, src:'\\bconocida\\s+(?:tanto\\s+)?por\\s+su\\s+(?:belleza|aspecto|apariencia|figura|elegancia|porte)\\b',
+    explain:'Encuadrar los atributos físicos como razón principal de la fama de la sujeto margina sus verdaderos logros.',
+    suggest:'Sustituye por aquello por lo que es conocida profesionalmente.',
+    rewrites:[
+      { from:'Era conocida tanto por su belleza como por su investigación.', to:'Era conocida por su investigación sobre física de plasma.' },
+      { from:'El público la admiraba tanto por su elegancia como por su voz.', to:'El público celebraba su poderosa voz de soprano y su interpretación de Verdi.' },
+    ] },
+
+  { cat:'appearance', weight:1.4, src:'\\bbien\\s+(?:vestida|arreglada|presentada)\\b',
+    explain:'Las referencias a la vestimenta y el arreglo personal en contextos biográficos profesionales se aplican de forma desproporcionada a las mujeres.',
+    suggest:'Elimina la referencia. Si la presentación es relevante para su trabajo, explícalo directamente.',
+    rewrites:[
+      { from:'La economista, siempre bien vestida, dirigió la conferencia.', to:'La economista dirigió la conferencia.' },
+      { from:'Siempre bien arreglada, proyectaba autoridad en cada aparición pública.', to:'Proyectaba autoridad en cada aparición pública.' },
+    ] },
+
+  { cat:'appearance', weight:1.8, src:'\\b(?:radiante|luminosa|vivaz|estilizada)\\b',
+    explain:'Estos términos son principalmente halagos físicos que rara vez se aplican a hombres en biografías enciclopédicas.',
+    suggest:'Elimina el descriptor físico o reformúlalo en términos de presencia profesional si es genuinamente relevante.',
+    rewrites:[
+      { from:'La vivaz presentadora se convirtió en un nombre conocido.', to:'La presentadora se convirtió en un nombre conocido gracias a su serie documental.' },
+      { from:'Su radiante presencia iluminaba cualquier sala.', to:'[Eliminar — no es enciclopédicamente relevante.]' },
+    ] },
+
+  { cat:'appearance', weight:1.7, src:'\\b(?:fotogénica|telegénica)\\b',
+    explain:'"Fotogénica" y "telegénica" sitúan la apariencia visual como una cualidad profesional relevante, lo que se aplica de forma desproporcionada a las mujeres.',
+    suggest:'Describe la efectividad mediática o las habilidades comunicativas en términos profesionales.',
+    rewrites:[
+      { from:'Su presencia telegénica ayudó a construir una amplia audiencia.', to:'Su claridad comunicativa y fluidez mediática le ayudaron a construir una amplia audiencia.' },
+      { from:'Se la consideraba muy fotogénica y aparecía con frecuencia en la prensa.', to:'Recibió amplia cobertura de prensa tras su vuelo en solitario récord.' },
+    ] },
+
+  // ── LENGUAJE DIMINUTIVO ──────────────────────────
+  { cat:'diminutive', weight:2.5, src:'\\bsolo\\s+(?:una\\s+)?(?:chica|mujer|ama\\s+de\\s+casa|madre|enfermera|secretaria)\\b',
+    explain:'"Solo" minimiza la identidad o el puesto de la sujeto, implicando que es insuficiente o irrelevante.',
+    suggest:'Elimina "solo". Describe el rol o puesto sin calificativo.',
+    rewrites:[
+      { from:'Era solo una secretaria cuando inventó el proceso.', to:'Era secretaria cuando desarrolló el proceso.' },
+      { from:'Era solo un ama de casa cuando su novela fue aceptada para publicación.', to:'Terminó su primera novela mientras se ocupaba del hogar.' },
+    ] },
+
+  { cat:'diminutive', weight:2.3, src:'\\bmeramente\\s+(?:una\\s+)?(?:chica|mujer|secretaria|asistente|enfermera|maestra|empleada)\\b',
+    explain:'"Meramente" clasifica implícitamente el puesto de la sujeto como bajo o poco importante.',
+    suggest:'Elimina "meramente". Describe el punto de partida de forma neutra.',
+    rewrites:[
+      { from:'Era meramente una enfermera antes de que su investigación transformara la medicina.', to:'Comenzó su carrera como enfermera; su investigación posterior transformó el campo.' },
+      { from:'Era meramente una maestra cuando escribió el artículo.', to:'Era profesora de secundaria cuando escribió el artículo que atrajo atención internacional.' },
+    ] },
+
+  { cat:'diminutive', weight:2.5, src:'\\ba\\s+pesar\\s+de\\s+(?:ser\\s+)?(?:una\\s+)?(?:mujer|madre|esposa)\\b',
+    explain:'"A pesar de ser mujer" enmarca la condición de mujer en sí misma como un obstáculo para el éxito.',
+    suggest:'Elimina esta construcción. Si existió discriminación estructural, nómbrala específicamente.',
+    rewrites:[
+      { from:'A pesar de ser mujer, lideró la expedición al Ártico.', to:'A pesar de ser excluida del programa oficial, lideró la expedición al Ártico.' },
+      { from:'A pesar de ser madre de tres hijos, completó su doctorado.', to:'Completó su doctorado en 1961.' },
+    ] },
+
+  { cat:'diminutive', weight:2.0, src:'\\bsorprendentemente\\s+(?:logró|consiguió|alcanzó|llegó|ganó|publicó|completó|obtuvo)\\b',
+    explain:'"Sorprendentemente" codifica una expectativa de género sobre quién se espera que triunfe.',
+    suggest:'Elimina "sorprendentemente". Enuncia el logro directamente.',
+    rewrites:[
+      { from:'Sorprendentemente logró ganar el premio.', to:'Ganó el premio.' },
+      { from:'Sorprendentemente consiguió una puntuación perfecta.', to:'Obtuvo una puntuación perfecta.' },
+    ] },
+
+  { cat:'diminutive', weight:1.5, src:'\\bpudo\\s+(?:completar|terminar|ganar|lograr|conseguir|publicar|escribir|liderar)\\b',
+    explain:'"Pudo" implica que el logro fue un esfuerzo extraordinario, lo que se aplica de forma desproporcionada a las mujeres.',
+    suggest:'Sustituye por un verbo activo directo.',
+    rewrites:[
+      { from:'Pudo publicar tres artículos ese año.', to:'Publicó tres artículos ese año.' },
+      { from:'Pudo completar su tesis mientras trabajaba a tiempo completo.', to:'Completó su tesis mientras trabajaba a tiempo completo.' },
+    ] },
+
+  { cat:'diminutive', weight:1.8, src:'\\b(?:joven\\s+)?(?:chica|niña)\\b',
+    skipCtx:'\\b(?:dio\\s+a\\s+luz\\s+(?:a\\s+)?una|tuvo\\s+una\\s+(?:bebé\\s+)?|su\\s+(?:bebé\\s+)?|bienvenida\\s+a\\s+una|una\\s+(?:pequeña|bebé)\\s+)(?:chica|niña)\\b',
+    explain:'Usar "chica" o "niña" para describir a una mujer adulta la infantiliza.',
+    suggest:'Sustituye por "mujer". Si literalmente era una niña en ese momento, especifica la edad.',
+    rewrites:[
+      { from:'La chica de la España rural llegaría a ganar el Premio Nobel.', to:'La mujer de la España rural llegaría a ganar el Premio Nobel.' },
+      { from:'Una tranquila chica de Sevilla que conmovió al mundo.', to:'Una mujer de Sevilla cuyo activismo cambió la política educativa internacional.' },
+    ] },
+
+  { cat:'diminutive', weight:1.6, src:'\\bpoco\\s+conocida\\b',
+    explain:'"Poco conocida" puede codificar inconscientemente la suposición de que las contribuciones de las mujeres son oscuras cuando simplemente pueden estar infradocumentadas.',
+    suggest:'Considera si esto refleja una oscuridad histórica real o una brecha documental.',
+    rewrites:[
+      { from:'La poco conocida química descubrió el compuesto en 1921.', to:'La química, cuya obra fue en gran parte ignorada en vida, descubrió el compuesto en 1921.' },
+      { from:'Sigue siendo una figura poco conocida pese a sus contribuciones.', to:'Sus contribuciones han sido ampliamente ignoradas en las historias estándar del campo.' },
+    ] },
+
+  { cat:'diminutive', weight:1.8, src:'\\bsilenciosamente\\s+(?:logró|trabajó|contribuyó|consiguió|construyó|desarrolló|lideró|fundó|escribió|publicó)\\b',
+    explain:'"Silenciosamente logró" implica que la obra de la sujeto fue modesta o discreta, minimizando su relevancia real.',
+    suggest:'Elimina "silenciosamente". Enuncia el logro directamente.',
+    rewrites:[
+      { from:'Silenciosamente construyó una de las colecciones de arte más importantes del siglo.', to:'Reunió una de las colecciones de arte más importantes del siglo.' },
+      { from:'A lo largo de tres décadas, silenciosamente se estableció como la principal autoridad.', to:'A lo largo de tres décadas, se estableció como la principal autoridad.' },
+    ] },
+
+  { cat:'diminutive', weight:1.9, src:'\\bsin\\s+embargo\\s+(?:ella\\s+)?(?:persistió|continuó|siguió\\s+adelante|perseveró)\\b',
+    explain:'"Sin embargo persistió" enmarca la continuidad como notable, implicando que la persistencia era inesperada o improbable.',
+    suggest:'Enuncia directamente lo que hizo. Si existieron obstáculos, nómbralos explícitamente.',
+    rewrites:[
+      { from:'Sin embargo, persistió y completó su doctorado.', to:'A pesar de que le negaron el acceso al laboratorio, completó su doctorado en 1934.' },
+      { from:'Sin embargo, ella continuó y finalmente obtuvo reconocimiento.', to:'El reconocimiento llegó solo después de décadas de resistencia institucional a sus hallazgos.' },
+    ] },
+
+  { cat:'diminutive', weight:1.7, src:'\\bsolo\\s+(?:una\\s+)?(?:mujer|chica|ama\\s+de\\s+casa|madre|secretaria|enfermera|asistente)\\b',
+    explain:'"Solo una mujer" funciona como "meramente" —minimiza su identidad o punto de partida.',
+    suggest:'Elimina "solo". Describe el rol directamente.',
+    rewrites:[
+      { from:'Era solo un ama de casa cuando escribió su primera novela.', to:'Escribió su primera novela mientras se ocupaba del hogar.' },
+      { from:'Era solo una enfermera; sin embargo, su investigación fue transformadora.', to:'Era enfermera cuando su investigación transformó los protocolos de tratamiento.' },
+    ] },
+
+  // ── MARCA DE GÉNERO INNECESARIA ───────────────────
+  { cat:'gendered', weight:1.9, src:'\\bmujer\\s+(?:médico|piloto|ingeniero|científico|arquitecto|matemático|físico|químico|director|general|almirante|juez|cirujano|senador|presidente|ejecutivo)\\b',
+    explain:'Añadir el calificativo "mujer" a un título profesional masculino implica que la profesión es masculina por defecto.',
+    suggest:'Usa la forma femenina del título profesional directamente, sin calificativo adicional.',
+    rewrites:[
+      { from:'Era mujer médico en un hospital público.', to:'Era médica en un hospital público.' },
+      { from:'Fue una de las pocas mujeres piloto de su generación.', to:'Fue una de las pocas pilotas de su generación.' },
+    ] },
+
+  { cat:'gendered', weight:1.7, src:'\\b(?:escritora|poeta|pintora|artista|escultora|fotógrafa|directora|productora|compositora|intérprete)\\s+(?:femenina|mujer)\\b',
+    explain:'Añadir un calificativo de género a profesiones creativas implica que la identidad artística es masculina por defecto.',
+    suggest:'Usa únicamente el título profesional.',
+    rewrites:[
+      { from:'Era una célebre escritora femenina.', to:'Era una célebre escritora.' },
+      { from:'Como directora de cine femenina, luchó por la financiación.', to:'Luchó por la financiación a lo largo de su carrera, enfrentándose a barreras sistémicas en la industria.' },
+    ] },
+
+  { cat:'gendered', weight:2.2, src:'\\bpara\\s+(?:ser\\s+)?(?:una\\s+)?mujer\\b',
+    explain:'"Para ser mujer" mide el logro de la sujeto con un estándar de género en lugar de uno absoluto.',
+    suggest:'Elimina "para ser mujer" por completo. Describe el logro en términos absolutos.',
+    rewrites:[
+      { from:'Su producción matemática era extraordinaria para ser mujer.', to:'Su producción matemática era extraordinaria.' },
+      { from:'Escribía con una claridad inusual para ser mujer de su época.', to:'Escribía con una claridad inusual para la época.' },
+    ] },
+
+  { cat:'gendered', weight:1.4, src:'\\bprimera\\s+mujer\\s+en\\s+(?:ganar|recibir|ocupar|ser|llegar|liderar|servir|dirigir)\\b',
+    explain:'"Primera mujer en" usado descuidadamente implica que las mujeres son inherentemente menos esperadas en un rol.',
+    suggest:'Si es genuinamente significativo, contextualízalo: explica qué barreras estructurales excluían previamente a las mujeres.' },
+
+  { cat:'gendered', weight:1.8, src:'\\b(?:mujer\\s+de\\s+carrera|madre\\s+trabajadora|esposa\\s+trabajadora)\\b',
+    explain:'"Mujer de carrera" y "madre trabajadora" son construcciones de género sin equivalentes masculinos comunes.',
+    suggest:'Describe su profesión directamente.',
+    rewrites:[
+      { from:'Como mujer de carrera, navegó por un sector dominado por hombres.', to:'Como ingeniera, navegó por un sector que excluía sistemáticamente a las mujeres del liderazgo.' },
+      { from:'Fue una madre trabajadora que encontró tiempo para escribir.', to:'Publicó su primera novela en 1962.' },
+    ] },
+
+  { cat:'gendered', weight:1.6, src:'\\b(?:marimacho|chicazo|tomboy)\\b',
+    explain:'"Marimacho" enmarca los intereses de una niña como no conformes con su género, implicando que ciertas actividades son inherentemente masculinas.',
+    suggest:'Describe los intereses específicos directamente.',
+    rewrites:[
+      { from:'Era una marimacho de pequeña: prefería los coches a las muñecas.', to:'Desde pequeña se sentía atraída por los motores y pasaba sus fines de semana desmontando maquinaria.' },
+    ] },
+
+  { cat:'gendered', weight:1.5, src:'\\b(?:poco\\s+femenina|muy\\s+femenina|falta\\s+de\\s+feminidad)\\b',
+    explain:'Estas expresiones aplican un código de conducta de género, implicando que las mujeres deben ajustarse a un estándar comportamental determinado.',
+    suggest:'Describe el comportamiento directamente sin el marco evaluativo de género.',
+    rewrites:[
+      { from:'Su franqueza, poco femenina, escandalizó a sus contemporáneos.', to:'Su franqueza escandalizó a muchos de sus contemporáneos.' },
+      { from:'Los críticos la encontraban demasiado agresiva y poco femenina.', to:'Los críticos la encontraban demasiado directa para el protocolo de la época.' },
+    ] },
+
+  // ── MINIMIZACIÓN DE LOGROS ────────────────────────
+  { cat:'omission', weight:1.4, src:'\\bfue\\s+(?:galardonada|premiada|reconocida|honrada|nombrada|elegida|designada)\\s+(?:con|como)?\\b',
+    explain:'La voz pasiva elimina la agencia de la sujeto. "Fue galardonada" la convierte en receptora pasiva en lugar de merecedora activa.',
+    suggest:'Reescribe en voz activa.',
+    rewrites:[
+      { from:'Fue galardonada con el Premio Nobel en 1963.', to:'Recibió el Premio Nobel en 1963.' },
+      { from:'Fue premiada con el Premio Cervantes por su obra.', to:'Obtuvo el Premio Cervantes por su obra.' },
+    ] },
+
+  { cat:'omission', weight:1.9, src:'\\bmientras\\s+(?:también\\s+)?(?:criaba|cuidaba\\s+a|se\\s+ocupaba\\s+de)\\s+(?:sus\\s+)?(?:hijos|familia|niños|hijo|hija)\\b',
+    explain:'Añadir las responsabilidades domésticas a los logros profesionales implica que estos están en tensión, un encuadre que rara vez se aplica a los hombres.',
+    suggest:'Si los detalles familiares son relevantes, dales su propia oración en una sección de «Vida personal».',
+    rewrites:[
+      { from:'Escribió cuatro novelas mientras también criaba a tres hijos.', to:'Escribió cuatro novelas durante la década de 1960.' },
+      { from:'Lideró el departamento mientras cuidaba a sus padres mayores.', to:'Lideró el departamento a lo largo de la década de 1980.' },
+    ] },
+
+  { cat:'omission', weight:2.0, src:'\\bcompaginando\\s+(?:su\\s+)?(?:carrera|trabajo|vida\\s+profesional)\\s+(?:con|y)\\s+(?:su\\s+)?(?:familia|hijos|maternidad|vida\\s+doméstica)\\b',
+    explain:'"Compaginando carrera y familia" se aplica casi exclusivamente a mujeres en la biografía.',
+    suggest:'Elimina el encuadre de "compaginar". Describe la vida profesional y personal por separado.',
+    rewrites:[
+      { from:'Compaginando su carrera con la maternidad, publicó de manera prolífica.', to:'Publicó de manera prolífica a lo largo de la década de 1970.' },
+      { from:'Compaginando su vida profesional y sus responsabilidades familiares, encontró tiempo para componer.', to:'Compuso de manera prolífica, completando seis sinfonías entre 1955 y 1970.' },
+    ] },
+
+  { cat:'omission', weight:1.7, src:'\\bdespués\\s+de\\s+(?:su\\s+)?(?:matrimonio|boda|casarse|criar\\s+a\\s+sus\\s+hijos)\\b',
+    explain:'Secuenciar los logros profesionales después de los hitos domésticos implica que la carrera era secundaria.',
+    suggest:'Reordena para comenzar con la cronología profesional.' },
+
+  { cat:'omission', weight:1.9, src:'\\b(?:tropezó\\s+(?:con|en)|descubrió\\s+por\\s+casualidad|llegó\\s+por\\s+accidente|se\\s+topó\\s+con)\\b',
+    explain:'"Tropezó con" enmarca el descubrimiento como accidental en lugar de fruto de la pericia deliberada y el trabajo sostenido.',
+    suggest:'Usa lenguaje activo e intencional: "descubrió", "su investigación llevó a", "identificó".',
+    rewrites:[
+      { from:'Tropezó con la fórmula mientras limpiaba el laboratorio.', to:'Identificó la fórmula durante el trabajo rutinario de laboratorio.' },
+      { from:'Se topó con el manuscrito en un archivo de París.', to:'Su investigación archivística en París sacó a la luz el manuscrito.' },
+    ] },
+
+  { cat:'omission', weight:1.7, src:'\\bsu\\s+(?:modesta|pequeña|humilde|menor|escasa)\\s+(?:contribución|aportación|papel|logro)\\b',
+    explain:'Calificar la contribución de la sujeto como "modesta" o "pequeña" impone un juicio diminutivo antes de que el lector pueda evaluarla.',
+    suggest:'Describe la contribución y deja que el lector evalúe su importancia.',
+    rewrites:[
+      { from:'Su modesta contribución al campo fue ampliamente citada.', to:'Su contribución al campo fue ampliamente citada.' },
+      { from:'Desempeñó un pequeño papel en el desarrollo de la teoría.', to:'Contribuyó al desarrollo de la teoría aportando los datos experimentales en que se basa el modelo.' },
+    ] },
+
+  { cat:'omission', weight:1.6, src:'\\b(?:ayudó|asistió|apoyó|auxilió)\\s+(?:a\\s+)?(?:desarrollar|crear|descubrir|establecer|fundar|construir|escribir|liderar)\\b',
+    explain:'"Ayudó" o "asistió" donde la sujeto pudo ser la principal contribuyente minimiza su papel e implica que fue secundaria.',
+    suggest:'Verifica su papel real. Si lideró o co-lideró, usa "lideró", "codiseñó" o "creó".',
+    rewrites:[
+      { from:'Ayudó a desarrollar el algoritmo.', to:'Codiseñó el algoritmo.' },
+      { from:'Ayudó a fundar la organización en 1948.', to:'Fue cofundadora de la organización en 1948.' },
+    ] },
+
+  // ── TONO CONDESCENDIENTE ──────────────────────────
+  { cat:'tone', weight:2.0, src:'\\b(?:luchadora|bravucona|respondona|peleona)\\b',
+    explain:'Estos términos se aplican casi exclusivamente a mujeres e implican que su asertividad es inusual o curiosa.',
+    suggest:'Sustituye por un descriptor neutro.',
+    rewrites:[
+      { from:'La luchadora activista se negó a ceder.', to:'La tenaz activista se negó a ceder.' },
+      { from:'Su actitud bravucona le ganó admiradores.', to:'Su persistencia le ganó admiradores.' },
+    ] },
+
+  { cat:'tone', weight:1.9, src:'\\bvalerosa\\b',
+    explain:'"Valerosa" con tono diminutivo sugiere coraje de manera condescendiente, como si fuera inesperado en una mujer.',
+    suggest:'Usa "valiente", "decidida" o "persistente" sin el subtexto de sorpresa.',
+    rewrites:[
+      { from:'La valerosa joven investigadora siguió adelante.', to:'La decidida joven investigadora siguió adelante.' },
+      { from:'Era una valerosa pionera que desafió al sistema.', to:'Desafió activamente las barreras institucionales durante toda su carrera.' },
+    ] },
+
+  { cat:'tone', weight:1.8, src:'\\b(?:descarada|atrevida|insolente)\\b',
+    explain:'Estos términos trivializan el ingenio o la asertividad de la mujer con un término de género.',
+    suggest:'Describe la cualidad específica con mayor precisión.',
+    rewrites:[
+      { from:'Sus descaradas respuestas conquistaron al público.', to:'Su agudo ingenio conquistó al público.' },
+      { from:'Era conocida por su atrevida presencia escénica.', to:'Era conocida por su imponente presencia escénica.' },
+    ] },
+
+  { cat:'tone', weight:2.1, src:'\\b(?:sorprendentemente|asombrosamente|increíblemente),?\\s+(?:ella\\s+)?(?:se\\s+convirtió|logró|consiguió|llegó|ganó|publicó|alcanzó)\\b',
+    explain:'Los adverbios de sorpresa codifican una expectativa de género sobre quién se espera que triunfe.',
+    suggest:'Elimina el adverbio de sorpresa. Enuncia el logro directamente.',
+    rewrites:[
+      { from:'Sorprendentemente, se convirtió en jefa del departamento a los treinta años.', to:'Se convirtió en jefa del departamento a los treinta años.' },
+      { from:'Asombrosamente, publicó veinte artículos antes de los veinticinco.', to:'Antes de los veinticinco años había publicado veinte artículos.' },
+    ] },
+
+  { cat:'tone', weight:1.5, src:'\\bdesafió\\s+(?:las\\s+)?(?:probabilidades|expectativas|convenciones|los\\s+estereotipos)\\b',
+    explain:'"Desafió las probabilidades" implica que el éxito era inherentemente improbable, a menudo codificando supuestos de género.',
+    suggest:'Si existieron barreras estructurales reales, nómbralas explícitamente.',
+    rewrites:[
+      { from:'Desafió las probabilidades para convertirse en cirujana.', to:'A pesar de ser excluida de los programas de formación quirúrgica hasta 1968, se convirtió en cirujana.' },
+      { from:'Desafió las expectativas y ganó el campeonato.', to:'Ganó el campeonato después de entrenarse por su cuenta al serle negado el acceso al programa nacional.' },
+    ] },
+
+  { cat:'tone', weight:1.3, src:'\\bmodelo\\s+a\\s+seguir\\s+para\\s+(?:las\\s+)?(?:mujeres|chicas|jóvenes\\s+mujeres)\\b',
+    explain:'Encuadrar el significado de la sujeto principalmente como modelo para otras mujeres limita su impacto a una esfera de género.',
+    suggest:'Describe primero su contribución al campo en su conjunto.',
+    rewrites:[
+      { from:'Se convirtió en un modelo a seguir para las jóvenes científicas.', to:'Su trabajo en cromodinámica cuántica avanzó el campo; también se convirtió en una figura prominente para las mujeres que acceden a la física.' },
+      { from:'Es vista ampliamente como un modelo a seguir para las niñas en el deporte.', to:'Es una de las deportistas más laureadas en la historia de su disciplina.' },
+    ] },
+
+  { cat:'tone', weight:2.1, src:'\\b(?:histérica|estridente|respondona|mandona|brusca|harpia)\\b',
+    explain:'Estos términos patologizan o trivializan la expresión asertiva y se aplican casi exclusivamente a las mujeres.',
+    suggest:'Elimina el término por completo. Si su estilo comunicativo es relevante, descríbelo neutralmente.',
+    rewrites:[
+      { from:'Los críticos la llamaban estridente y mandona.', to:'Los críticos la describían como contundente y directa.' },
+      { from:'Fue tachada de histérica por sus detractores.', to:'Sus detractores intentaron desacreditar sus argumentos atacando sus formas en lugar de sus pruebas.' },
+    ] },
+
+  { cat:'tone', weight:1.8, src:'\\b(?:demasiado|muy)\\s+(?:emocional|sensible|dramática|apasionada)\\b',
+    explain:'Calificar a una mujer de "demasiado emocional" patologiza la expresión emocional de forma desproporcionada.',
+    suggest:'Elimina el calificativo. Describe la situación específica sin evaluar la idoneidad de su respuesta.',
+    rewrites:[
+      { from:'Algunos colegas la encontraban demasiado emocional en las reuniones.', to:'Algunos colegas chocaban con su enfoque en las reuniones.' },
+      { from:'Los críticos sentían que era demasiado apasionada para ser objetiva.', to:'Los críticos cuestionaban si su implicación personal en la causa afectaba a su análisis.' },
+    ] },
+
+  { cat:'tone', weight:1.6, src:'\\b(?:muy\\s+opinante|demasiado\\s+opinante|cargada\\s+de\\s+opiniones)\\b',
+    explain:'Describir a una mujer como "muy opinante" enmarca sus convicciones firmes como un defecto de personalidad, algo que rara vez se aplica a hombres de convicción equivalente.',
+    suggest:'Sustituye por un lenguaje neutro que describa las posiciones que sostenía.',
+    rewrites:[
+      { from:'La muy opinante periodista era divisiva.', to:'La periodista sostenía posiciones firmes sobre la libertad de prensa y era una figura polarizadora en los círculos mediáticos.' },
+    ] },
+
+  { cat:'tone', weight:1.7, src:'\\bambiciosa\\b',
+    explain:'"Ambiciosa" aplicado a las mujeres conlleva con mayor frecuencia connotaciones negativas —implicando exceso o agresividad— que cuando se aplica a los hombres.',
+    suggest:'Comprueba el contexto. Si implica exceso, sustitúyelo por una descripción de sus objetivos específicos.',
+    rewrites:[
+      { from:'Su naturaleza ambiciosa alejó a sus colegas.', to:'Su impulso por liderar el departamento generó fricciones con colegas que preferían la estructura existente.' },
+      { from:'Algunos la veían como demasiado ambiciosa.', to:'Algunos colegas se resistían a su impulso hacia una reforma institucional rápida.' },
+    ] },
+];
+
+/* ════════════════════════════════════════════════════
+   MAPEADO DE SECCIONES
+════════════════════════════════════════════════════ */
+function buildSectionMap(fullText, apiSections) {
+  const map = [{ title: null, charPos: 0, index: 0 }];
+  let pos = 0;
+  for (const line of fullText.split('\n')) {
+    const m = line.match(/^(={2,})\s*(.+?)\s*\1\s*$/);
+    if (m) map.push({ title: m[2].trim(), charPos: pos, index: null });
+    pos += line.length + 1;
+  }
+  for (const { index, line: apiTitle } of apiSections) {
+    const entry = map.find(s => s.title === apiTitle);
+    if (entry) entry.index = parseInt(index);
+  }
+  return map;
+}
+
+function getSectionIndex(sentence, fullText, sectionMap) {
+  const pos = fullText.indexOf(sentence.slice(0, 60));
+  if (pos === -1) return 0;
+  let result = 0;
+  for (const sec of sectionMap) {
+    if (sec.charPos <= pos && sec.index !== null) result = sec.index;
+  }
+  return result;
+}
+
+/* ════════════════════════════════════════════════════
+   MOTOR DE ANÁLISIS
+════════════════════════════════════════════════════ */
+function splitSentences(text) {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/([.!?])\s+([A-ZÁÉÍÓÚÑÜ])/g, '$1\n$2')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 15);
+}
+
+function isNegated(sentence, matchIndex) {
+  const before = sentence.slice(Math.max(0, matchIndex - 60), matchIndex);
+  return /\b(?:no|nunca|jamás|sin|tampoco|ni|ninguna|no\s+es|no\s+era|no\s+fue)\b/i.test(before);
+}
+
+function getSurroundingQuote(sentences, idx) {
+  const parts = [sentences[idx]];
+  if (sentences[idx + 1]) parts.push(sentences[idx + 1]);
+  const joined = parts.join(' ').trim();
+  return joined.length > 400 ? joined.slice(0, 397) + '…' : joined;
+}
+
+function analyseArticle(title, fullText, sectionMap, editBase) {
+  const sentences  = splitSentences(fullText);
+  const totalWords = fullText.split(/\s+/).filter(Boolean).length;
+  const instances  = [];
+  const usedKeys   = {};
+
+  PATTERNS.forEach(({ cat, weight, src, skipCtx, explain, suggest, rewrites }) => {
+    const re     = new RegExp(src, 'gi');
+    const skipRe = skipCtx ? new RegExp(skipCtx, 'i') : null;
+    sentences.forEach((sentence, idx) => {
+      re.lastIndex = 0;
+      const match = re.exec(sentence);
+      if (!match) return;
+      if (isNegated(sentence, match.index)) return;
+      if (skipRe && skipRe.test(sentence)) return;
+      const key = `${cat}::${sentence.slice(0, 70)}`;
+      if (usedKeys[key]) return;
+      usedKeys[key] = true;
+      const secIdx         = getSectionIndex(sentence, fullText, sectionMap);
+      const sectionEditUrl = `${editBase}&section=${secIdx}`;
+      instances.push({ cat, weight, quote: getSurroundingQuote(sentences, idx), matchedPhrase: match[0], explain, suggest, rewrites, sectionEditUrl });
+    });
+  });
+
+  const topInstances = instances.sort((a, b) => b.weight - a.weight).slice(0, 8);
+
+  const catHits = { relational:0, appearance:0, diminutive:0, gendered:0, omission:0, tone:0 };
+  instances.forEach(({ cat }) => { catHits[cat]++; });
+
+  // Comprobaciones estructurales
+  const structuralNotes = [];
+  const openingText  = sentences.slice(0, 6).join(' ');
+  const personalHits = (openingText.match(/\b(?:casada|matrimonio|marido|esposo|hijos|madre|hija|hermana|nacida\s+en|su\s+(?:familia|padres|padre|madre))\b/gi) || []).length;
+  const profHits     = (openingText.match(/\b(?:carrera|profesión|trabajo|publicó|logró|ganó|lideró|fundó|creó|descubrió|desarrolló|inventó|escribió|dirigió|premio|medalla|conocida\s+por|famosa\s+por)\b/gi) || []).length;
+  if (personalHits > profHits && personalHits >= 2) {
+    structuralNotes.push('Los párrafos iniciales anteponen los detalles personales y familiares a los logros profesionales — un patrón estructural más común en las biografías de mujeres que en las de hombres.');
+  }
+  const passiveCount = (fullText.match(/\bfue\s+(?:galardonada|premiada|elegida|seleccionada|nombrada|designada|descrita|considerada)\b/gi) || []).length;
+  const passiveRate  = sentences.length > 0 ? passiveCount / sentences.length : 0;
+  if (passiveRate > 0.2) {
+    structuralNotes.push(`Las construcciones en voz pasiva aparecen en aproximadamente el ${Math.round(passiveRate * 100)}% de las oraciones, eliminando sistemáticamente la agencia de la sujeto de su propia narrativa.`);
+  }
+
+  const activeCats = Object.entries(catHits).filter(([,v])=>v>0).map(([k])=>CAT_META[k].label);
+  let summary;
+  if (topInstances.length === 0 && structuralNotes.length === 0) {
+    summary = `Este artículo sobre ${title} muestra pocos indicios de sesgo de género sistemático. El lenguaje es en gran medida neutro y la sujeto recibe un tratamiento que se aplicaría igualmente a sujetos de cualquier género. Es posible que aún quepan mejoras menores.`;
+  } else {
+    summary = `Este artículo sobre ${title} contiene patrones detectables de sesgo de género. `;
+    if (activeCats.length > 0) summary += `Se encontraron problemas en las siguientes categorías: ${activeCats.slice(0,3).join(', ')}. `;
+    if (structuralNotes.length > 0) summary += `También se detectaron problemas estructurales en la organización del artículo. `;
+    summary += `${topInstances.length} pasaje${topInstances.length !== 1 ? 's han' : ' ha'} sido marcado${topInstances.length !== 1 ? 's' : ''} a continuación. Como siempre, utiliza tu propio criterio — no todo pasaje marcado será sesgado en su contexto específico.`;
+  }
+
+  const positives = [];
+  if (structuralNotes.length === 0 && personalHits <= profHits) positives.push('La apertura establece la identidad profesional de la sujeto en lugar de comenzar con detalles personales o familiares.');
+  if (catHits.appearance === 0) positives.push('No se detectaron descripciones innecesarias de la apariencia física.');
+  if (passiveRate < 0.1) positives.push('El artículo utiliza la voz activa de manera consistente, preservando la agencia de la sujeto en su propia narrativa.');
+  if (positives.length === 0) positives.push('El artículo sigue en general una estructura cronológica, aunque los problemas de lenguaje señalados deberían corregirse.');
+
+  return { summary, catHits, instances: topInstances, positives: positives.slice(0, 3), structuralNotes, stats: { totalWords, totalSentences: sentences.length, passiveRate: Math.round(passiveRate * 100) } };
+}
+
+/* ════════════════════════════════════════════════════
+   API DE WIKIPEDIA (ES)
+════════════════════════════════════════════════════ */
+async function searchWiki(query) {
+  if (!query || query.length < 2) return [];
+  const url = `https://es.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=8&namespace=0&format=json&origin=*`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  const titles = data[1] || [];
+  const descs  = data[2] || [];
+  return titles.map((t, i) => ({ title: t, desc: descs[i] || '' }));
+}
+
+async function fetchWiki(input) {
+  const clean = input.trim().replace(/^https?:\/\/[a-z.]*wikipedia\.org\/wiki\//i, '');
+  const url   = `https://es.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(clean)}&prop=extracts|categories&explaintext=true&cllimit=50&format=json&origin=*`;
+  const res   = await fetch(url);
+  if (!res.ok) throw new Error(`La API de Wikipedia devolvió el código ${res.status}.`);
+  const data  = await res.json();
+  const page  = Object.values(data.query.pages)[0];
+  if (page.missing !== undefined) throw new Error('Artículo no encontrado en Wikipedia. Comprueba el título o la URL.');
+
+  const text = page.extract || '';
+  if (text.length < 100) throw new Error('El texto del artículo es demasiado breve o no pudo recuperarse.');
+
+  // Verificación de biografía de mujer
+  const cats = (page.categories || []).map(c => c.title.toLowerCase());
+  const womenCatHit = cats.some(c =>
+    /\bmujeres\b|\bfemenin[ao]\b|\bactriz\b|\breina\b|\bemperatriz\b|\bduquesa\b|\bprincesa\b/.test(c)
+  );
+  const excerpt    = text.slice(0, 3000).toLowerCase();
+  const ellaCount  = (excerpt.match(/\b(?:ella|su|sus|sí\s+misma|se\s+convirtió|nació|fue\s+una)\b/g) || []).length;
+  const elCount    = (excerpt.match(/\b(?:él|su\s+padre|su\s+esposo|se\s+convirtió\s+en\s+el)\b/g) || []).length;
+  const isFemaleSubject = womenCatHit || (ellaCount > elCount && ellaCount >= 3);
+
+  if (!isFemaleSubject) {
+    throw new Error(
+      `"${page.title}" está fuera del alcance de esta herramienta. ` +
+      'Analiza el sesgo de género específicamente en biografías de mujeres en Wikipedia. ' +
+      'Por favor, busca la biografía de una mujer para continuar.'
+    );
+  }
+
+  const slug = encodeURIComponent(page.title.replace(/ /g, '_'));
+  const editBase = `https://es.wikipedia.org/w/index.php?title=${slug}&action=edit`;
+
+  let apiSections = [];
+  try {
+    const secRes  = await fetch(`https://es.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(page.title)}&prop=sections&format=json&origin=*`);
+    const secData = await secRes.json();
+    apiSections = secData.parse?.sections || [];
+  } catch(_) {}
+
+  return { text, title: page.title, url: `https://es.wikipedia.org/wiki/${slug}`, editBase, editUrl: editBase, apiSections };
+}
+
+/* ════════════════════════════════════════════════════
+   COMPONENTES DE UI
+════════════════════════════════════════════════════ */
+function SearchDropdown({ value, onChange, onSelect, onSubmit }) {
+  const [results, setResults]   = useState([]);
+  const [searching, setSearch]  = useState(false);
+  const [open, setOpen]         = useState(false);
+  const [activeIdx, setActive]  = useState(-1);
+  const debounceRef = useRef(null);
+  const wrapRef     = useRef(null);
+
+  useEffect(() => {
+    const handler = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (value.length < 2) { setResults([]); setOpen(false); return; }
+    setSearch(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const hits = await searchWiki(value);
+        setResults(hits); setOpen(hits.length > 0); setActive(-1);
+      } catch(_) { setResults([]); }
+      finally { setSearch(false); }
+    }, 280);
+    return () => clearTimeout(debounceRef.current);
+  }, [value]);
+
+  const pick = item => { onSelect(item.title); setOpen(false); setResults([]); };
+
+  const handleKey = e => {
+    if (!open) { if (e.key === 'Enter') onSubmit(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i+1, results.length-1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i-1, -1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (activeIdx >= 0 && results[activeIdx]) pick(results[activeIdx]); else { setOpen(false); onSubmit(); } }
+    else if (e.key === 'Escape') setOpen(false);
+  };
+
+  return h('div', { className:'dropdown-wrap', ref: wrapRef },
+    h('div', { style:{ position:'relative' } },
+      h('input', { type:'text', value, autoComplete:'off', placeholder:'Busca en Wikipedia la biografía de una mujer…', onChange: e => onChange(e.target.value), onFocus: () => { if (results.length > 0) setOpen(true); }, onKeyDown: handleKey,
+        style:{ width:'100%', padding:'13px 40px 13px 15px', fontSize:15, border:'1.5px solid #C8B8A8', borderRadius:3, background:'#fff', fontFamily:"'Source Serif 4',serif", color:'#0A0A0A' } }),
+      searching && h('div', { style:{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', width:16, height:16, border:'2px solid #E3120B', borderTopColor:'transparent', borderRadius:'50%', animation:'spin .7s linear infinite' } })
+    ),
+    open && h('div', { className:'dropdown-list' },
+      results.length === 0
+        ? h('div', { className:'dropdown-searching' }, 'Sin resultados')
+        : results.map((item, i) =>
+            h('div', { key: item.title, className:`dropdown-item${i===activeIdx?' active':''}`, onMouseDown:()=>pick(item), onMouseEnter:()=>setActive(i) },
+              h('div', { className:'thumb-placeholder' }, '♀'),
+              h('div', { style:{ flex:1, minWidth:0 } },
+                h('div', { style:{ fontWeight:600, fontSize:14, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, item.title),
+                item.desc && h('div', { style:{ fontSize:11, color:'#888', fontFamily:"'IBM Plex Mono',monospace", marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, item.desc)
+              )
+            )
+          )
+    )
+  );
+}
+
+function CatPill({ catKey, count }) {
+  const c = CAT_META[catKey];
+  if (count === 0) return null;
+  return h('span', { style:{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', background:c.bg, color:c.color, fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.08em', textTransform:'uppercase', fontWeight:700, marginRight:5, marginBottom:5, border:`1px solid ${c.color}33` } },
+    `${c.icon} ${c.label} (${count})`);
+}
+
+function InstanceCard({ inst }) {
+  const [open, setOpen] = useState(false);
+  const c = CAT_META[inst.cat] || CAT_META.tone;
+  const shortQuote = inst.quote.length > 130 ? inst.quote.slice(0, 127) + '…' : inst.quote;
+  const example = React.useMemo(() => {
+    if (!inst.rewrites || inst.rewrites.length === 0) return null;
+    return inst.rewrites[Math.floor(Math.random() * inst.rewrites.length)];
+  }, [inst.rewrites]);
+
+  return h('div', { className:'inst-row', style:{ background:'#fff', borderLeft:`4px solid ${c.color}`, border:`1px solid ${c.color}22`, borderLeft:`4px solid ${c.color}`, marginBottom:9 } },
+    h('button', { onClick:()=>setOpen(o=>!o), style:{ width:'100%', background:'none', border:'none', padding:'13px 16px', textAlign:'left', cursor:'pointer', display:'flex', gap:10, alignItems:'flex-start' } },
+      h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.1em', textTransform:'uppercase', padding:'3px 8px', background:c.bg, color:c.color, whiteSpace:'nowrap', marginTop:1, flexShrink:0, fontWeight:700 } }, `${c.icon} ${c.label}`),
+      h('span', { style:{ fontSize:14, lineHeight:1.6, color:'#555', fontStyle:'italic', flex:1 } }, `"${shortQuote}"`),
+      h('span', { style:{ color:'#ccc', fontSize:12, marginTop:2, flexShrink:0 } }, open?'▲':'▼')
+    ),
+    open && h('div', { style:{ padding:'0 16px 16px' } },
+      h('div', { style:{ marginBottom:10 } },
+        h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.12em', textTransform:'uppercase', color:'#888' } }, 'Frase detectada: '),
+        h('code', { style:{ background:'#fff3cd', padding:'1px 6px', fontSize:13, color:'#7a5400', border:'1px solid #f0d060' } }, inst.matchedPhrase)
+      ),
+      h('div', { style:{ padding:'11px 15px', background:c.bg, fontSize:14, lineHeight:1.75, fontStyle:'italic', color:'#444', marginBottom:12 } }, `"${inst.quote}"`),
+      h('div', { style:{ marginBottom:12 } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.13em', textTransform:'uppercase', color:'#888', marginBottom:4 } }, 'Por qué es sesgado'),
+        h('div', { style:{ fontSize:14, lineHeight:1.75, color:'#444', fontWeight:300 } }, inst.explain)
+      ),
+      h('div', { style:{ padding:'11px 15px', background:'#e9f6ee', border:'1px solid #b8dfc9', marginBottom:12 } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.13em', textTransform:'uppercase', color:'#1a7a4a', marginBottom:4 } }, 'Enfoque sugerido'),
+        h('div', { style:{ fontSize:14, lineHeight:1.75, color:'#1a3a28', fontWeight:300 } }, inst.suggest)
+      ),
+      example && h('div', { style:{ marginBottom:12 } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.13em', textTransform:'uppercase', color:'#888', marginBottom:8 } }, 'Ejemplo de reescritura'),
+        h('div', { style:{ display:'flex', flexDirection:'column', gap:6 } },
+          h('div', { style:{ display:'flex', gap:10, alignItems:'baseline' } },
+            h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#c0392b', letterSpacing:'0.1em', textTransform:'uppercase', flexShrink:0, marginTop:2 } }, 'Antes'),
+            h('div', { style:{ fontSize:13, lineHeight:1.65, color:'#999', fontStyle:'italic', textDecoration:'line-through', textDecorationColor:'#e0a0a0' } }, example.from)
+          ),
+          h('div', { style:{ display:'flex', gap:10, alignItems:'baseline' } },
+            h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#1a7a4a', letterSpacing:'0.1em', textTransform:'uppercase', flexShrink:0, marginTop:2 } }, 'Después'),
+            h('div', { style:{ fontSize:13, lineHeight:1.65, color:'#1a3a28', fontStyle:'italic' } }, example.to)
+          )
+        )
+      ),
+      h('a', { href: inst.sectionEditUrl, target:'_blank', rel:'noopener noreferrer', style:{ display:'inline-block', padding:'7px 15px', background:'#0A0A0A', color:'#FAF8F5', textDecoration:'none', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.1em', textTransform:'uppercase' } }, 'Editar en Wikipedia →')
+    )
+  );
+}
+
+function Report({ result, title, url, editUrl, generatedAt }) {
+  const { summary, catHits, instances, positives, structuralNotes, stats } = result;
+  const hasIssues = instances.length > 0 || structuralNotes.length > 0;
+
+  return h('div', { className:'report-anim' },
+    h('div', { style:{ background:'#0A0A0A', color:'#FAF8F5', padding:'22px 26px' } },
+      h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 } },
+        h('div', null,
+          h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.2em', textTransform:'uppercase', color:'#E3120B', marginBottom:7 } }, 'Auditoría de Sesgo Algorítmico — Biografía Femenina'),
+          h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:'clamp(17px,3vw,24px)', fontWeight:800, lineHeight:1.2 } }, title),
+          h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#555', marginTop:7, letterSpacing:'0.05em' } },
+            `${stats.totalWords.toLocaleString()} palabras · ${stats.totalSentences} oraciones · ${stats.passiveRate}% voz pasiva · ${generatedAt}`)
+        ),
+        h('div', { style:{ display:'flex', gap:8, flexWrap:'wrap' }, className:'no-print' },
+          h('a', { href:url, target:'_blank', rel:'noopener noreferrer', style:{ padding:'8px 14px', border:'1px solid #444', color:'#bbb', textDecoration:'none', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.07em' } }, 'Ver ↗'),
+          h('a', { href:editUrl, target:'_blank', rel:'noopener noreferrer', style:{ padding:'8px 14px', background:'#E3120B', color:'#fff', textDecoration:'none', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.07em', fontWeight:700 } }, '✏ Editar en Wikipedia'),
+          h('button', { onClick:()=>window.print(), style:{ padding:'8px 14px', border:'1px solid #444', background:'none', color:'#aaa', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.07em', cursor:'pointer' } }, '⎙ PDF')
+        )
+      )
+    ),
+
+    h('div', { style:{ padding:'22px 26px' } },
+      h('div', { style:{ marginBottom:22 } },
+        h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:19, fontWeight:800, marginBottom:8 } }, 'Resumen'),
+        h('div', { style:{ fontSize:15, lineHeight:1.8, color:'#333', fontWeight:300 } }, summary),
+        h('div', { style:{ marginTop:12 } },
+          Object.keys(catHits).map(k => h(CatPill, { key:k, catKey:k, count:catHits[k] }))
+        )
+      ),
+
+      structuralNotes.length > 0 && h('div', { style:{ marginBottom:22 } },
+        structuralNotes.map((note, i) =>
+          h('div', { key:i, style:{ padding:'13px 16px', background:'#fffbe6', border:'1px solid #f5d87a', marginBottom:8, fontSize:14, lineHeight:1.75, color:'#5a4000', fontWeight:300 } },
+            h('span', { style:{ fontWeight:700 } }, '⚠ Nota estructural: '), note)
+        )
+      ),
+
+      hasIssues && h('div', { style:{ marginBottom:22 } },
+        h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:14, flexWrap:'wrap', gap:8 } },
+          h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:19, fontWeight:800 } }, 'Pasajes marcados'),
+          h('div', { className:'no-print', style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#bbb', letterSpacing:'0.07em' } }, 'Haz clic para expandir')
+        ),
+        instances.length > 0
+          ? instances.map((inst,i) => h(InstanceCard, { key:i, inst }))
+          : h('div', { style:{ color:'#888', fontSize:14 } }, 'No se detectaron pasajes problemáticos.')
+      ),
+
+      positives.length > 0 && h('div', { style:{ marginBottom:22 } },
+        h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:19, fontWeight:800, marginBottom:10 } }, 'Lo que este artículo hace bien'),
+        positives.map((p, i) =>
+          h('div', { key:i, style:{ padding:'10px 14px', background:'#e9f6ee', border:'1px solid #b8dfc9', marginBottom:7, fontSize:14, lineHeight:1.7, color:'#1a3a28', fontWeight:300 } },
+            h('span', { style:{ color:'#1a7a4a', fontWeight:700 } }, '✓ '), p)
+        )
+      ),
+
+      h('div', { style:{ marginBottom:22, padding:'18px 20px', background:'#f5f5f5', border:'1px solid #ddd' } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.15em', textTransform:'uppercase', color:'#888', marginBottom:10, fontWeight:700 } }, 'Guía de edición'),
+        [
+          ['1. Examina cada pasaje marcado', 'El contexto importa: no cada patrón detectado supone un sesgo real en su contexto específico.'],
+          ['2. Comprueba las fuentes', 'Si el artículo describe algo que realmente ocurrió (p.ej. un marido que ayudó), el hecho puede permanecer — solo reformula el encuadre.'],
+          ['3. Edita por sección', 'Haz clic en «Editar en Wikipedia» para ir directamente a la sección que contiene el problema.'],
+          ['4. Sé neutral', 'Wikipedia requiere un punto de vista neutral. No añadas valoraciones positivas para compensar las negativas.'],
+          ['5. Resume tu edición', 'Usa el resumen de edición para explicar brevemente el cambio (ej. «Lenguaje más neutral»).'],
+        ].map(([t, d], i) =>
+          h('div', { key:i, style:{ marginBottom:8, fontSize:13, lineHeight:1.7, color:'#444' } },
+            h('span', { style:{ fontWeight:700, fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#0A0A0A' } }, t + ' — '), d)
+        )
+      ),
+
+      h('div', { style:{ fontSize:12, color:'#aaa', fontFamily:"'IBM Plex Mono',monospace", lineHeight:1.8, borderTop:'1px solid #eee', paddingTop:14 } },
+        `Nota sobre el algoritmo: esta herramienta aplica ${PATTERNS.length} patrones de expresiones regulares al texto del artículo. Es basada en reglas, no en IA, y determinista: el mismo artículo producirá siempre los mismos resultados. Los falsos positivos son posibles; la revisión humana es siempre necesaria.`)
+    )
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   APP PRINCIPAL
+════════════════════════════════════════════════════ */
+function App() {
+  const [query,   setQuery]   = useState('');
+  const [busy,    setBusy]    = useState(false);
+  const [report,  setReport]  = useState(null);
+  const [error,   setError]   = useState('');
+  const [meta,    setMeta]    = useState(null);
+
+  const QUICK = ['Frida Kahlo','Rigoberta Menchú','Simone de Beauvoir','Rosalind Franklin','Marie Curie'];
+
+  const run = useCallback(async (title) => {
+    const q = (title || query).trim();
+    if (!q) return;
+    setBusy(true); setError(''); setReport(null); setMeta(null);
+    try {
+      const wiki = await fetchWiki(q);
+      const sectionMap = buildSectionMap(wiki.text, wiki.apiSections);
+      const result = analyseArticle(wiki.title, wiki.text, sectionMap, wiki.editBase);
+      setReport(result);
+      setMeta({ title: wiki.title, url: wiki.url, editUrl: wiki.editUrl, generatedAt: new Date().toLocaleString('es-ES') });
+    } catch(e) {
+      setError(e.message || 'Se produjo un error inesperado.');
+    } finally {
+      setBusy(false);
+    }
+  }, [query]);
+
+  const onSelect = useCallback(title => { setQuery(title); run(title); }, [run]);
+
+  return h('div', { style:{ minHeight:'100vh', display:'flex', flexDirection:'column' } },
+
+    h('div', { style:{ background:'#0A0A0A', color:'#FAF8F5', padding:'28px 26px 24px' } },
+      h('div', { style:{ maxWidth:860, margin:'0 auto' } },
+        h('div', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.22em', textTransform:'uppercase', color:'#E3120B', marginBottom:10 } }, 'Wikipedia · Español · Versión 1.0'),
+        h('h1', { style:{ fontFamily:"'Playfair Display',serif", fontSize:'clamp(22px,4vw,38px)', fontWeight:800, lineHeight:1.15, marginBottom:10 } },
+          'Detector de Sesgo', h('br'), 'de Género'),
+        h('p', { style:{ fontSize:14, color:'#aaa', fontFamily:"'Source Serif 4',serif", fontWeight:300, lineHeight:1.7, maxWidth:560, marginBottom:22 } },
+          'Analiza artículos de Wikipedia sobre mujeres en busca de patrones de sesgo de género. Sin IA. Sin registro. Solo introduce un nombre.')
+      )
+    ),
+
+    h('div', { style:{ background:'#F2EDE7', padding:'20px 26px', borderBottom:'1px solid #e0d8cf' }, className:'no-print' },
+      h('div', { style:{ maxWidth:860, margin:'0 auto' } },
+        h('div', { style:{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:12 } },
+          h(SearchDropdown, { value:query, onChange:setQuery, onSelect, onSubmit:()=>run() }),
+          h('button', { onClick:()=>run(), disabled:busy||!query.trim(),
+            style:{ padding:'13px 22px', background:'#E3120B', color:'#fff', border:'none', fontSize:13, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', fontWeight:700, whiteSpace:'nowrap' } },
+            busy ? 'Analizando…' : 'Analizar')
+        ),
+        h('div', { style:{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' } },
+          h('span', { style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#aaa', letterSpacing:'0.1em', textTransform:'uppercase' } }, 'Ejemplos:'),
+          QUICK.map(name => h('button', { key:name, onClick:()=>{ setQuery(name); run(name); },
+            style:{ padding:'5px 11px', background:'#fff', border:'1px solid #C8B8A8', fontSize:12, fontFamily:"'Source Serif 4',serif", cursor:'pointer', color:'#555' } }, name))
+        )
+      )
+    ),
+
+    h('div', { style:{ flex:1, maxWidth:860, margin:'0 auto', width:'100%', padding:'24px 26px' } },
+      error && h('div', { style:{ padding:'16px 20px', background:'#fdecea', border:'1px solid #f5c2be', color:'#8a1a26', fontSize:14, lineHeight:1.7, fontFamily:"'Source Serif 4',serif", fontWeight:300 } }, error),
+      report && meta && h(Report, { result:report, title:meta.title, url:meta.url, editUrl:meta.editUrl, generatedAt:meta.generatedAt }),
+      !report && !error && !busy && h('div', { style:{ textAlign:'center', padding:'60px 0', color:'#bbb' } },
+        h('div', { style:{ fontFamily:"'Playfair Display',serif", fontSize:28, fontWeight:800, marginBottom:12, color:'#ddd' } }, '♀'),
+        h('div', { style:{ fontSize:15, fontFamily:"'Source Serif 4',serif", fontWeight:300, lineHeight:1.8 } },
+          'Busca la biografía de una mujer para generar un análisis de sesgo inmediato — sin IA ni clave de API.'),
+        h('div', { style:{ marginTop:14, fontFamily:"'IBM Plex Mono',monospace", fontSize:9, letterSpacing:'0.12em', color:'#ccc' } },
+          `${PATTERNS.length} indicadores de sesgo · 6 categorías · solo biografías de mujeres · completamente local`)
+      )
+    ),
+
+    h('div', { className:'tool-footer no-print' },
+      h('span', null,
+        'Creado por ',
+        h('a', { href:'mailto:nethahussain@gmail.com' }, 'Netha Hussain'),
+        ' · nethahussain@gmail.com'
+      ),
+      h('a', { href:'https://github.com/nethahussain/wikipedia-gender-bias-detector', target:'_blank', rel:'noopener noreferrer' }, 'Ver código en GitHub →')
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
